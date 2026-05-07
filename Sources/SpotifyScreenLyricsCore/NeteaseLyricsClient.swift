@@ -67,11 +67,39 @@ public final class NeteaseLyricsClient: LyricsFetching, @unchecked Sendable {
         for track: TrackLookupKey,
         requestStartedAt: ContinuousClock.Instant
     ) async throws -> [NeteaseSong] {
+        var songsByID: [Int: NeteaseSong] = [:]
+        var lastError: Error?
+
+        for query in searchQueries(for: track) {
+            do {
+                let songs = try await searchSongs(
+                    query: query,
+                    track: track,
+                    requestStartedAt: requestStartedAt
+                )
+                songs.forEach { songsByID[$0.id] = $0 }
+            } catch {
+                lastError = error
+            }
+        }
+
+        if songsByID.isEmpty, let lastError {
+            throw lastError
+        }
+
+        return Array(songsByID.values)
+    }
+
+    private func searchSongs(
+        query: String,
+        track: TrackLookupKey,
+        requestStartedAt: ContinuousClock.Instant
+    ) async throws -> [NeteaseSong] {
         var request = URLRequest(url: searchURL)
         request.httpMethod = "POST"
         request.timeoutInterval = timeoutInterval
         request.httpBody = formEncodedBody([
-            ("s", "\(track.title) \(track.artist)"),
+            ("s", query),
             ("type", "1"),
             ("offset", "0"),
             ("total", "true"),
@@ -199,8 +227,8 @@ public final class NeteaseLyricsClient: LyricsFetching, @unchecked Sendable {
     }
 
     private func titleScore(candidate: String, expected: String) -> Int? {
-        let candidate = candidate.normalizedForLookup()
-        let expected = expected.normalizedForLookup()
+        let candidate = candidate.normalizedForNeteaseMatch()
+        let expected = expected.normalizedForNeteaseMatch()
         let looseCandidate = looseTitle(candidate)
         let looseExpected = looseTitle(expected)
 
@@ -215,10 +243,10 @@ public final class NeteaseLyricsClient: LyricsFetching, @unchecked Sendable {
     }
 
     private func artistScore(candidateArtists: [String], expected: String) -> Int? {
-        let expected = expected.normalizedForLookup()
+        let expected = expected.normalizedForNeteaseMatch()
         let expectedParts = artistParts(expected)
         let candidates = candidateArtists
-            .map { $0.normalizedForLookup() }
+            .map { $0.normalizedForNeteaseMatch() }
             .filter { !$0.isEmpty }
         let joinedCandidates = candidates.joined(separator: " ")
 
@@ -244,8 +272,8 @@ public final class NeteaseLyricsClient: LyricsFetching, @unchecked Sendable {
         guard let candidate else {
             return false
         }
-        let normalizedCandidate = candidate.normalizedForLookup()
-        let normalizedExpected = expected.normalizedForLookup()
+        let normalizedCandidate = candidate.normalizedForNeteaseMatch()
+        let normalizedExpected = expected.normalizedForNeteaseMatch()
         guard !normalizedCandidate.isEmpty && !normalizedExpected.isEmpty else {
             return false
         }
@@ -279,6 +307,21 @@ public final class NeteaseLyricsClient: LyricsFetching, @unchecked Sendable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         return Set(parts)
+    }
+
+    private func searchQueries(for track: TrackLookupKey) -> [String] {
+        let originalQuery = "\(track.title) \(track.artist)"
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let simplifiedQuery = originalQuery.simplifiedChinese()
+
+        var queries: [String] = []
+        for query in [originalQuery, simplifiedQuery] where !query.isEmpty {
+            if !queries.contains(where: { $0.normalizedForLookup() == query.normalizedForLookup() }) {
+                queries.append(query)
+            }
+        }
+        return queries
     }
 
     private func formEncodedBody(_ fields: [(String, String)]) -> Data {
@@ -361,4 +404,16 @@ private struct NeteaseLyricsResponse: Decodable, Sendable {
 
 private struct NeteaseLyricPayload: Decodable, Sendable {
     let lyric: String
+}
+
+private extension String {
+    func normalizedForNeteaseMatch() -> String {
+        simplifiedChinese().normalizedForLookup()
+    }
+
+    func simplifiedChinese() -> String {
+        let mutable = NSMutableString(string: self)
+        CFStringTransform(mutable, nil, "Hant-Hans" as CFString, false)
+        return mutable as String
+    }
 }
