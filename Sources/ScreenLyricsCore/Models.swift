@@ -96,7 +96,7 @@ public enum LyricsStatus: Equatable, Sendable {
     case loading(trackTitle: String, artist: String)
     case ready(trackTitle: String, artist: String, lyrics: DisplayLyrics, isPlaying: Bool)
     case noSyncedLyrics(trackTitle: String, artist: String)
-    case retryingInBackground(trackTitle: String, artist: String)
+    case retryingInBackground(trackTitle: String, artist: String, message: String)
     case error(message: String)
 }
 

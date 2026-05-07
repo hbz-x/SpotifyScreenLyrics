@@ -47,6 +47,8 @@ func coordinatorUsesCacheBeforeNetwork() async throws {
     let fetcher = CountingLyricsFetcher(result: .failure(LyricsLookupError.badResponse))
     let coordinator = LyricsCoordinator(spotifyReader: spotify, lyricsFetcher: fetcher, lyricsCache: cache)
 
+    _ = await coordinator.refresh()
+    try await Task.sleep(nanoseconds: 10_000_000)
     let status = await coordinator.refresh()
 
     #expect(status == .ready(
@@ -56,6 +58,41 @@ func coordinatorUsesCacheBeforeNetwork() async throws {
         isPlaying: true
     ))
     #expect(await fetcher.fetchCount == 0)
+}
+
+@Test
+func coordinatorFallsBackToNetworkWhenCacheMisses() async throws {
+    let cache = LyricsCacheStore(cacheDirectory: temporaryDirectory())
+    let spotify = StubSpotifyReader(track: SpotifyTrack(
+        title: "Song",
+        artist: "Artist",
+        album: "Album",
+        duration: 100,
+        position: 1,
+        isPlaying: true
+    ))
+    let fetcher = CountingLyricsFetcher(result: .success(Lyrics(
+        trackName: "Song",
+        artistName: "Artist",
+        plainLyrics: nil,
+        syncedLyrics: "[00:00.00]Downloaded line",
+        syncedLines: [LyricLine(time: 0, text: "Downloaded line")]
+    )))
+    let coordinator = LyricsCoordinator(spotifyReader: spotify, lyricsFetcher: fetcher, lyricsCache: cache)
+
+    _ = await coordinator.refresh()
+    try await Task.sleep(nanoseconds: 10_000_000)
+    let status = await coordinator.refresh()
+    let cached = await cache.loadLyrics(for: TrackLookupKey(title: "Song", artist: "Artist", album: "Album", duration: 100))
+
+    #expect(await fetcher.fetchCount == 1)
+    #expect(status == .ready(
+        trackTitle: "Song",
+        artist: "Artist",
+        lyrics: DisplayLyrics(currentLine: "Downloaded line", nextLine: nil),
+        isPlaying: true
+    ))
+    #expect(cached?.syncedLyrics == "[00:00.00]Downloaded line")
 }
 
 @Test

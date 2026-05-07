@@ -7,7 +7,7 @@ public actor LyricsCoordinator {
     private let retrySchedule: [TimeInterval]
     private var cachedKey: TrackLookupKey?
     private var lyricState: CachedLyricState = .empty
-    private var loadingTask: Task<CachedLyricState, Never>?
+    private var loadingTask: Task<Void, Never>?
     private var retryState: [String: RetryState] = [:]
 
     public init(
@@ -65,18 +65,11 @@ public actor LyricsCoordinator {
 
         switch lyricState {
         case .empty:
-            lyricState = .loading
-            if let cachedLyrics = await lyricsCache.loadLyrics(for: key) {
-                lyricState = .lyrics(cachedLyrics)
-                break
-            }
-            startNetworkLyricsLoad(for: key)
+            startLyricsLoad(for: key)
             return .loading(trackTitle: track.title, artist: track.artist)
         case .loading:
             if let loadingTask, loadingTask.isCancelled == false {
-                let state = await loadingTask.value
-                lyricState = state
-                self.loadingTask = nil
+                return .loading(trackTitle: track.title, artist: track.artist)
             } else {
                 lyricState = .empty
                 return .loading(trackTitle: track.title, artist: track.artist)
@@ -87,10 +80,18 @@ public actor LyricsCoordinator {
             return .noSyncedLyrics(trackTitle: track.title, artist: track.artist)
         case .failed:
             if shouldRetry(for: key) {
-                startNetworkLyricsLoad(for: key)
-                return .retryingInBackground(trackTitle: track.title, artist: track.artist)
+                startLyricsLoad(for: key)
+                return .retryingInBackground(
+                    trackTitle: track.title,
+                    artist: track.artist,
+                    message: "Downloading lyrics from LRCLIB"
+                )
             }
-            return .retryingInBackground(trackTitle: track.title, artist: track.artist)
+            return .retryingInBackground(
+                trackTitle: track.title,
+                artist: track.artist,
+                message: "LRCLIB timed out; will retry in background"
+            )
         }
 
         guard case .lyrics(let lyrics) = lyricState,
@@ -106,24 +107,39 @@ public actor LyricsCoordinator {
         )
     }
 
-    private func startNetworkLyricsLoad(for key: TrackLookupKey) {
+    private func startLyricsLoad(for key: TrackLookupKey) {
         lyricState = .loading
-        loadingTask = Task {
+        loadingTask = Task { [lyricsCache, lyricsFetcher] in
+            if let cachedLyrics = await lyricsCache.loadLyrics(for: key) {
+                await finishLyricsLoad(.lyrics(cachedLyrics), for: key)
+                return
+            }
+
             do {
                 let lyrics = try await lyricsFetcher.fetchLyrics(for: key)
                 try? await lyricsCache.saveLyrics(lyrics, for: key)
-                return .lyrics(lyrics)
+                await finishLyricsLoad(.lyrics(lyrics), for: key)
             } catch LyricsLookupError.noSyncedLyrics {
-                return .noSyncedLyrics
+                await finishLyricsLoad(.noSyncedLyrics, for: key)
             } catch LyricsLookupError.noResult {
-                return .noSyncedLyrics
+                await finishLyricsLoad(.noSyncedLyrics, for: key)
             } catch is CancellationError {
-                return .empty
+                await finishLyricsLoad(.empty, for: key)
             } catch {
-                recordFailure(for: key)
-                return .failed(readableMessage(for: error))
+                await finishLyricsLoad(.failed(readableMessage(for: error)), for: key, didFail: true)
             }
         }
+    }
+
+    private func finishLyricsLoad(_ state: CachedLyricState, for key: TrackLookupKey, didFail: Bool = false) {
+        guard cachedKey == key else {
+            return
+        }
+        if didFail {
+            recordFailure(for: key)
+        }
+        lyricState = state
+        loadingTask = nil
     }
 
     private func recordFailure(for key: TrackLookupKey) {

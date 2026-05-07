@@ -45,10 +45,10 @@ final class LyricsOverlayView: NSView {
             currentLineLabel.stringValue = "No synced lyrics found"
             nextLineLabel.stringValue = ""
             setDotColor(.systemGray)
-        case .retryingInBackground(let trackTitle, let artist):
+        case .retryingInBackground(let trackTitle, let artist, let message):
             titleLabel.stringValue = "\(trackTitle) - \(artist)"
-            currentLineLabel.stringValue = "No local lyrics yet"
-            nextLineLabel.stringValue = "Retrying in background"
+            currentLineLabel.stringValue = message
+            nextLineLabel.stringValue = ""
             setDotColor(.systemYellow)
         case .error(let message):
             titleLabel.stringValue = "ScreenLyrics"
