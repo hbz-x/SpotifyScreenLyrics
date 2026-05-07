@@ -58,9 +58,7 @@ public actor LyricsCoordinator {
 
         let key = track.lookupKey
         if cachedKey != key {
-            LyricsDebugLog.write(
-                "Track changed title=\"\(track.title)\" artist=\"\(track.artist)\" album=\"\(track.album)\" duration=\(Int(track.duration.rounded()))s stableID=\"\(key.stableID)\""
-            )
+            LyricsDebugLog.write("Track changed \(LyricsDebugLog.trackSummary(key))")
             cachedKey = key
             lyricState = .empty
             loadingTask?.cancel()
@@ -113,9 +111,8 @@ public actor LyricsCoordinator {
 
     private func startLyricsLoad(for key: TrackLookupKey) {
         lyricState = .loading
-        LyricsDebugLog.write(
-            "Lyrics load started title=\"\(key.title)\" artist=\"\(key.artist)\" album=\"\(key.album)\" duration=\(Int(key.duration.rounded()))s stableID=\"\(key.stableID)\""
-        )
+        let trackSummary = LyricsDebugLog.trackSummary(key)
+        LyricsDebugLog.write("Lyrics load started \(trackSummary)")
         loadingTask = Task { [lyricsCache, lyricsFetcher] in
             let loadStartedAt = ContinuousClock.now
             let cacheStartedAt = ContinuousClock.now
@@ -123,48 +120,48 @@ public actor LyricsCoordinator {
                 let cacheElapsed = ContinuousClock.now.elapsedMilliseconds(since: cacheStartedAt)
                 let totalElapsed = ContinuousClock.now.elapsedMilliseconds(since: loadStartedAt)
                 LyricsDebugLog.write(
-                    "Lyrics cache hit stableID=\"\(key.stableID)\" syncedLines=\(cachedLyrics.syncedLines.count) cacheElapsed=\(cacheElapsed) totalElapsed=\(totalElapsed)"
+                    "Lyrics cache hit \(trackSummary) syncedLines=\(cachedLyrics.syncedLines.count) cacheElapsed=\(cacheElapsed) totalElapsed=\(totalElapsed)"
                 )
                 await finishLyricsLoad(.lyrics(cachedLyrics), for: key, loadStartedAt: loadStartedAt)
                 return
             }
 
             let cacheElapsed = ContinuousClock.now.elapsedMilliseconds(since: cacheStartedAt)
-            LyricsDebugLog.write("Lyrics cache miss stableID=\"\(key.stableID)\" cacheElapsed=\(cacheElapsed)")
+            LyricsDebugLog.write("Lyrics cache miss \(trackSummary) cacheElapsed=\(cacheElapsed)")
 
             do {
                 let fetchStartedAt = ContinuousClock.now
                 let lyrics = try await lyricsFetcher.fetchLyrics(for: key)
                 let fetchElapsed = ContinuousClock.now.elapsedMilliseconds(since: fetchStartedAt)
                 LyricsDebugLog.write(
-                    "Lyrics fetch returned stableID=\"\(key.stableID)\" syncedLines=\(lyrics.syncedLines.count) fetchElapsed=\(fetchElapsed)"
+                    "Lyrics fetch returned \(trackSummary) syncedLines=\(lyrics.syncedLines.count) fetchElapsed=\(fetchElapsed)"
                 )
 
                 let saveStartedAt = ContinuousClock.now
                 do {
                     try await lyricsCache.saveLyrics(lyrics, for: key)
                     let saveElapsed = ContinuousClock.now.elapsedMilliseconds(since: saveStartedAt)
-                    LyricsDebugLog.write("Lyrics cache save succeeded stableID=\"\(key.stableID)\" saveElapsed=\(saveElapsed)")
+                    LyricsDebugLog.write("Lyrics cache save succeeded \(trackSummary) saveElapsed=\(saveElapsed)")
                 } catch {
                     let saveElapsed = ContinuousClock.now.elapsedMilliseconds(since: saveStartedAt)
                     LyricsDebugLog.write(
-                        "Lyrics cache save failed stableID=\"\(key.stableID)\" saveElapsed=\(saveElapsed): \(error.localizedDescription)"
+                        "Lyrics cache save failed \(trackSummary) saveElapsed=\(saveElapsed): \(error.localizedDescription)"
                     )
                 }
 
                 await finishLyricsLoad(.lyrics(lyrics), for: key, loadStartedAt: loadStartedAt)
             } catch LyricsLookupError.noSyncedLyrics {
-                LyricsDebugLog.write("Lyrics load found no synced lyrics stableID=\"\(key.stableID)\"")
+                LyricsDebugLog.write("Lyrics load found no synced lyrics \(trackSummary)")
                 await finishLyricsLoad(.noSyncedLyrics, for: key, loadStartedAt: loadStartedAt)
             } catch LyricsLookupError.noResult {
-                LyricsDebugLog.write("Lyrics load found no LRCLIB result stableID=\"\(key.stableID)\"")
+                LyricsDebugLog.write("Lyrics load found no LRCLIB result \(trackSummary)")
                 await finishLyricsLoad(.noSyncedLyrics, for: key, loadStartedAt: loadStartedAt)
             } catch is CancellationError {
-                LyricsDebugLog.write("Lyrics load cancelled stableID=\"\(key.stableID)\"")
+                LyricsDebugLog.write("Lyrics load cancelled \(trackSummary)")
                 await finishLyricsLoad(.empty, for: key, loadStartedAt: loadStartedAt)
             } catch {
                 LyricsDebugLog.write(
-                    "Lyrics load failed stableID=\"\(key.stableID)\": \(error.localizedDescription)"
+                    "Lyrics load failed \(trackSummary): \(error.localizedDescription)"
                 )
                 await finishLyricsLoad(
                     .failed(readableMessage(for: error)),
@@ -183,7 +180,7 @@ public actor LyricsCoordinator {
         loadStartedAt: ContinuousClock.Instant? = nil
     ) async {
         guard cachedKey == key else {
-            LyricsDebugLog.write("Ignoring stale lyrics load result stableID=\"\(key.stableID)\"")
+            LyricsDebugLog.write("Ignoring stale lyrics load result \(LyricsDebugLog.trackSummary(key))")
             return
         }
         if didFail {
@@ -193,7 +190,7 @@ public actor LyricsCoordinator {
         loadingTask = nil
         let elapsed = loadStartedAt.map { ContinuousClock.now.elapsedMilliseconds(since: $0) } ?? "unknown"
         LyricsDebugLog.write(
-            "Lyrics load finished state=\(state.debugName) stableID=\"\(key.stableID)\" elapsed=\(elapsed)"
+            "Lyrics load finished state=\(state.debugName) \(LyricsDebugLog.trackSummary(key)) elapsed=\(elapsed)"
         )
     }
 
@@ -207,7 +204,7 @@ public actor LyricsCoordinator {
             nextRetryAt: Date().addingTimeInterval(delay)
         )
         LyricsDebugLog.write(
-            "Lyrics load retry scheduled stableID=\"\(key.stableID)\" failureCount=\(failureCount) delay=\(String(format: "%.0fs", delay))"
+            "Lyrics load retry scheduled \(LyricsDebugLog.trackSummary(key)) failureCount=\(failureCount) delay=\(String(format: "%.0fs", delay))"
         )
     }
 

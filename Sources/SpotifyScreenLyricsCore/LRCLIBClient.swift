@@ -24,9 +24,8 @@ public final class LRCLIBClient: LyricsFetching, @unchecked Sendable {
     public func fetchLyrics(for track: TrackLookupKey) async throws -> Lyrics {
         let requestStartedAt = ContinuousClock.now
         let durationSeconds = Int(track.duration.rounded())
-        LyricsDebugLog.write(
-            "LRCLIB fetch started title=\"\(track.title)\" artist=\"\(track.artist)\" album=\"\(track.album)\" duration=\(durationSeconds)s stableID=\"\(track.stableID)\""
-        )
+        let trackSummary = LyricsDebugLog.trackSummary(track)
+        LyricsDebugLog.write("LRCLIB fetch started \(trackSummary)")
 
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
@@ -37,7 +36,7 @@ public final class LRCLIBClient: LyricsFetching, @unchecked Sendable {
         ]
 
         guard let url = components?.url else {
-            LyricsDebugLog.write("LRCLIB fetch failed before request: bad URL")
+            LyricsDebugLog.write("LRCLIB fetch failed before request \(trackSummary): bad URL")
             throw LyricsLookupError.badResponse
         }
 
@@ -45,7 +44,7 @@ public final class LRCLIBClient: LyricsFetching, @unchecked Sendable {
         request.timeoutInterval = timeoutInterval
         request.setValue("SpotifyScreenLyrics/0.1.0 (https://lrclib.net)", forHTTPHeaderField: "User-Agent")
 
-        LyricsDebugLog.write("LRCLIB request URL=\(url.absoluteString) timeout=\(String(format: "%.1fs", timeoutInterval))")
+        LyricsDebugLog.write("LRCLIB request \(trackSummary) URL=\(url.absoluteString) timeout=\(String(format: "%.1fs", timeoutInterval))")
 
         let data: Data
         let response: URLResponse
@@ -53,19 +52,19 @@ public final class LRCLIBClient: LyricsFetching, @unchecked Sendable {
             (data, response) = try await session.data(for: request)
         } catch {
             let elapsed = ContinuousClock.now.elapsedMilliseconds(since: requestStartedAt)
-            LyricsDebugLog.write("LRCLIB request failed after \(elapsed): \(error.localizedDescription)")
+            LyricsDebugLog.write("LRCLIB request failed \(trackSummary) after \(elapsed): \(error.localizedDescription)")
             throw error
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             let elapsed = ContinuousClock.now.elapsedMilliseconds(since: requestStartedAt)
-            LyricsDebugLog.write("LRCLIB request returned non-HTTP response after \(elapsed)")
+            LyricsDebugLog.write("LRCLIB request returned non-HTTP response \(trackSummary) after \(elapsed)")
             throw LyricsLookupError.badResponse
         }
 
         let responseElapsed = ContinuousClock.now.elapsedMilliseconds(since: requestStartedAt)
         LyricsDebugLog.write(
-            "LRCLIB response status=\(httpResponse.statusCode) bytes=\(data.count) elapsed=\(responseElapsed)"
+            "LRCLIB response \(trackSummary) status=\(httpResponse.statusCode) bytes=\(data.count) elapsed=\(responseElapsed)"
         )
 
         switch httpResponse.statusCode {
@@ -76,15 +75,15 @@ public final class LRCLIBClient: LyricsFetching, @unchecked Sendable {
             guard !syncedLines.isEmpty else {
                 let elapsed = ContinuousClock.now.elapsedMilliseconds(since: requestStartedAt)
                 LyricsDebugLog.write(
-                    "LRCLIB response had no synced lyric lines plainLyrics=\(response.plainLyrics != nil) syncedCharacters=\(syncedLyrics.count) elapsed=\(elapsed)"
+                    "LRCLIB response had no synced lyric lines \(trackSummary) plainLyrics=\(response.plainLyrics != nil) syncedCharacters=\(syncedLyrics.count) elapsed=\(elapsed)"
                 )
                 throw LyricsLookupError.noSyncedLyrics
             }
 
             let elapsed = ContinuousClock.now.elapsedMilliseconds(since: requestStartedAt)
             LyricsDebugLog.write(
-                "LRCLIB fetch succeeded responseTitle=\"\(response.trackName)\" responseArtist=\"\(response.artistName)\" syncedLines=\(syncedLines.count) syncedCharacters=\(syncedLyrics.count) elapsed=\(elapsed)"
-            )
+                    "LRCLIB fetch succeeded \(trackSummary) responseTitle=\"\(response.trackName)\" responseArtist=\"\(response.artistName)\" syncedLines=\(syncedLines.count) syncedCharacters=\(syncedLyrics.count) elapsed=\(elapsed)"
+                )
 
             return Lyrics(
                 trackName: response.trackName,
@@ -95,11 +94,11 @@ public final class LRCLIBClient: LyricsFetching, @unchecked Sendable {
             )
         case 404:
             let elapsed = ContinuousClock.now.elapsedMilliseconds(since: requestStartedAt)
-            LyricsDebugLog.write("LRCLIB fetch completed with no result after \(elapsed)")
+            LyricsDebugLog.write("LRCLIB fetch completed with no result \(trackSummary) after \(elapsed)")
             throw LyricsLookupError.noResult
         default:
             let elapsed = ContinuousClock.now.elapsedMilliseconds(since: requestStartedAt)
-            LyricsDebugLog.write("LRCLIB fetch failed with bad status=\(httpResponse.statusCode) after \(elapsed)")
+            LyricsDebugLog.write("LRCLIB fetch failed \(trackSummary) with bad status=\(httpResponse.statusCode) after \(elapsed)")
             throw LyricsLookupError.badResponse
         }
     }
