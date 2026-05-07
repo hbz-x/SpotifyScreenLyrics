@@ -8,6 +8,8 @@
     <string>SpotifyScreenLyrics</string>
     <key>CFBundleExecutable</key>
     <string>SpotifyScreenLyrics</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.local.SpotifyScreenLyrics</string>
     <key>CFBundleInfoDictionaryVersion</key>
