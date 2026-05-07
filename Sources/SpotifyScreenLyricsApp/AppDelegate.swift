@@ -15,7 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let lyricsCache = LyricsCacheStore()
     private lazy var coordinator = LyricsCoordinator(
         spotifyReader: SpotifyAppleScriptClient(),
-        lyricsFetcher: LRCLIBClient(),
+        lyricsFetcher: FallbackLyricsFetcher([
+            LRCLIBClient(),
+            NeteaseLyricsClient()
+        ]),
         lyricsCache: lyricsCache
     )
 

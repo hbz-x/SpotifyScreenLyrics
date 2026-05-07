@@ -174,7 +174,7 @@ public actor LyricsCoordinator {
                 LyricsDebugLog.write("Lyrics load found no synced lyrics \(trackSummary)")
                 await finishLyricsLoad(.noSyncedLyrics, for: key, loadStartedAt: loadStartedAt)
             } catch LyricsLookupError.noResult {
-                LyricsDebugLog.write("Lyrics load found no LRCLIB result \(trackSummary)")
+                LyricsDebugLog.write("Lyrics load found no lyrics source result \(trackSummary)")
                 await finishLyricsLoad(.noSyncedLyrics, for: key, loadStartedAt: loadStartedAt)
             } catch is CancellationError {
                 LyricsDebugLog.write("Lyrics load cancelled \(trackSummary)")

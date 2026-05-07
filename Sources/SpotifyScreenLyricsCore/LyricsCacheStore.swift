@@ -64,7 +64,8 @@ public actor LyricsCacheStore: LyricsCaching {
                 artistName: entry.artist,
                 plainLyrics: nil,
                 syncedLyrics: syncedLyrics,
-                syncedLines: syncedLines
+                syncedLines: syncedLines,
+                source: entry.source
             )
         } catch {
             return nil
@@ -86,7 +87,7 @@ public actor LyricsCacheStore: LyricsCaching {
             album: key.album,
             duration: Int(key.duration.rounded()),
             fileName: fileName,
-            source: "lrclib",
+            source: lyrics.source,
             savedAt: Date()
         )
         upsert(entry)

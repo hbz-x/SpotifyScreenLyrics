@@ -70,6 +70,7 @@ public struct LyricLine: Equatable, Sendable {
 public struct Lyrics: Equatable, Sendable {
     public let trackName: String
     public let artistName: String
+    public let source: String
     public let plainLyrics: String?
     public let syncedLyrics: String
     public let syncedLines: [LyricLine]
@@ -79,10 +80,12 @@ public struct Lyrics: Equatable, Sendable {
         artistName: String,
         plainLyrics: String?,
         syncedLyrics: String,
-        syncedLines: [LyricLine]
+        syncedLines: [LyricLine],
+        source: String = "unknown"
     ) {
         self.trackName = trackName
         self.artistName = artistName
+        self.source = source
         self.plainLyrics = plainLyrics
         self.syncedLyrics = syncedLyrics
         self.syncedLines = syncedLines

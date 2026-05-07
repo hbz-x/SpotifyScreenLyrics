@@ -90,7 +90,8 @@ public final class LRCLIBClient: LyricsFetching, @unchecked Sendable {
                 artistName: response.artistName,
                 plainLyrics: response.plainLyrics,
                 syncedLyrics: syncedLyrics,
-                syncedLines: syncedLines
+                syncedLines: syncedLines,
+                source: "lrclib"
             )
         case 404:
             let elapsed = ContinuousClock.now.elapsedMilliseconds(since: requestStartedAt)
