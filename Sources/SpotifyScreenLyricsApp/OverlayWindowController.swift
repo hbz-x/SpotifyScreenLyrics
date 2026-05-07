@@ -6,7 +6,7 @@ final class OverlayWindowController: NSWindowController {
 
     init() {
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let width: CGFloat = min(900, screenFrame.width - 80)
+        let width: CGFloat = min(900, screenFrame.width - LyricsOverlayView.screenHorizontalPadding * 2)
         let height: CGFloat = 150
         let origin = NSPoint(
             x: screenFrame.midX - width / 2,
@@ -41,6 +41,7 @@ final class OverlayWindowController: NSWindowController {
 
     func render(_ status: LyricsStatus) {
         overlayView.render(status)
+        resizeForCurrentLyrics()
     }
 
     func setBackgroundOpacity(_ opacity: Double) {
@@ -57,5 +58,34 @@ final class OverlayWindowController: NSWindowController {
         }
         let rectInWindow = overlayView.containerFrameInWindow()
         return window.convertToScreen(rectInWindow)
+    }
+
+    private func resizeForCurrentLyrics() {
+        guard let window else {
+            return
+        }
+
+        let screenFrame = window.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        let preferredSize = overlayView.preferredWindowSize(in: screenFrame)
+        let currentFrame = window.frame
+        guard abs(currentFrame.width - preferredSize.width) >= 1
+            || abs(currentFrame.height - preferredSize.height) >= 1 else {
+            return
+        }
+
+        let minimumX = screenFrame.minX + LyricsOverlayView.screenHorizontalPadding
+        let maximumX = screenFrame.maxX - LyricsOverlayView.screenHorizontalPadding - preferredSize.width
+        let centeredX = currentFrame.midX - preferredSize.width / 2
+        let clampedX = min(max(centeredX, minimumX), max(minimumX, maximumX))
+        let frame = NSRect(
+            x: clampedX,
+            y: currentFrame.minY,
+            width: preferredSize.width,
+            height: preferredSize.height
+        )
+
+        window.setFrame(frame, display: true, animate: false)
     }
 }
