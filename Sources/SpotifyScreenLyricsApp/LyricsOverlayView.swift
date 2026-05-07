@@ -115,13 +115,11 @@ final class LyricsOverlayView: NSView {
 
     func preferredWindowSize(in screenFrame: NSRect) -> NSSize {
         let maximumWidth = max(1, screenFrame.width - Self.screenHorizontalPadding * 2)
-        let baseWidth = min(Metrics.baseMaximumWindowWidth, maximumWidth)
-        let currentLineWidth = singleLineTextWidth(for: currentLineLabel)
-        let targetWidth = min(max(baseWidth, currentLineWidth + Metrics.windowToTextHorizontalInset), maximumWidth)
+        let targetWidth = min(Metrics.baseMaximumWindowWidth, maximumWidth)
         let contentWidth = max(1, targetWidth - Metrics.windowToTextHorizontalInset)
-        let targetHeight = max(Metrics.minimumWindowHeight, preferredWindowHeight(forContentWidth: contentWidth))
-
         currentLineLabel.preferredMaxLayoutWidth = contentWidth
+
+        let targetHeight = max(Metrics.minimumWindowHeight, preferredWindowHeight())
         return NSSize(width: ceil(targetWidth), height: ceil(targetHeight))
     }
 
@@ -146,14 +144,16 @@ final class LyricsOverlayView: NSView {
         configure(label: nextLineLabel, font: .systemFont(ofSize: 18, weight: .regular), color: .tertiaryLabelColor)
 
         titleLabel.maximumNumberOfLines = 1
-        currentLineLabel.maximumNumberOfLines = 2
+        currentLineLabel.maximumNumberOfLines = Metrics.currentLineLimit
         nextLineLabel.maximumNumberOfLines = 1
         currentLineLabel.lineBreakMode = .byWordWrapping
+        currentLineLabel.allowsDefaultTighteningForTruncation = false
         currentLineLabel.usesSingleLineMode = false
+        currentLineLabel.cell?.lineBreakMode = .byWordWrapping
         currentLineLabel.cell?.usesSingleLineMode = false
         currentLineLabel.cell?.wraps = true
         currentLineLabel.cell?.isScrollable = false
-        currentLineLabel.cell?.truncatesLastVisibleLine = true
+        currentLineLabel.cell?.truncatesLastVisibleLine = false
 
         contentView.addSubview(titleLabel)
         contentView.addSubview(currentLineLabel)
@@ -207,10 +207,10 @@ final class LyricsOverlayView: NSView {
         label.cell?.truncatesLastVisibleLine = true
     }
 
-    private func preferredWindowHeight(forContentWidth contentWidth: CGFloat) -> CGFloat {
+    private func preferredWindowHeight() -> CGFloat {
         let titleHeight = singleLineHeight(for: titleLabel)
-        let currentLineHeight = wrappedCurrentLineHeight(forContentWidth: contentWidth)
-        let nextLineHeight = nextLineLabel.stringValue.isEmpty ? 0 : singleLineHeight(for: nextLineLabel)
+        let currentLineHeight = singleLineHeight(for: currentLineLabel) * CGFloat(Metrics.currentLineLimit)
+        let nextLineHeight = singleLineHeight(for: nextLineLabel)
         let contentHeight = titleHeight
             + Metrics.titleToCurrentSpacing
             + currentLineHeight
@@ -219,39 +219,8 @@ final class LyricsOverlayView: NSView {
         return contentHeight + Metrics.windowToTextVerticalInset
     }
 
-    private func singleLineTextWidth(for label: NSTextField) -> CGFloat {
-        let text = label.stringValue.replacingOccurrences(of: "\n", with: " ")
-        guard !text.isEmpty else {
-            return 0
-        }
-        return ceil((text as NSString).size(withAttributes: [.font: font(for: label)]).width)
-    }
-
     private func singleLineHeight(for label: NSTextField) -> CGFloat {
         lineHeight(for: font(for: label))
-    }
-
-    private func wrappedCurrentLineHeight(forContentWidth contentWidth: CGFloat) -> CGFloat {
-        let font = font(for: currentLineLabel)
-        let lineHeight = lineHeight(for: font)
-        let text = currentLineLabel.stringValue
-        guard !text.isEmpty else {
-            return lineHeight
-        }
-
-        let attributedText = NSAttributedString(
-            string: text,
-            attributes: [
-                .font: font,
-                .paragraphStyle: paragraphStyle(for: currentLineLabel.lineBreakMode)
-            ]
-        )
-        let boundingRect = attributedText.boundingRect(
-            with: NSSize(width: max(1, contentWidth), height: CGFloat.greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]
-        )
-        let maximumHeight = lineHeight * CGFloat(Metrics.currentLineLimit)
-        return min(max(lineHeight, ceil(boundingRect.height)), maximumHeight)
     }
 
     private func font(for label: NSTextField) -> NSFont {
@@ -260,13 +229,6 @@ final class LyricsOverlayView: NSView {
 
     private func lineHeight(for font: NSFont) -> CGFloat {
         ceil(font.ascender - font.descender + font.leading)
-    }
-
-    private func paragraphStyle(for lineBreakMode: NSLineBreakMode) -> NSParagraphStyle {
-        let style = NSMutableParagraphStyle()
-        style.alignment = .center
-        style.lineBreakMode = lineBreakMode
-        return style
     }
 
     private func setDotColor(_ color: NSColor) {
