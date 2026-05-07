@@ -17,7 +17,7 @@ public actor LyricsCoordinator {
         spotifyReader: SpotifyReading,
         lyricsFetcher: LyricsFetching,
         lyricsCache: LyricsCaching = LyricsCacheStore(),
-        retrySchedule: [TimeInterval] = [30, 120, 300],
+        retrySchedule: [TimeInterval] = [20, 20, 20],
         foregroundLoadingLimit: Duration = .seconds(3)
     ) {
         self.spotifyReader = spotifyReader
@@ -33,6 +33,7 @@ public actor LyricsCoordinator {
         loadingTask?.cancel()
         loadingTask = nil
         loadingStartedAt = nil
+        retryState.removeAll()
     }
 
     public var cacheDirectory: URL {
@@ -94,20 +95,24 @@ public actor LyricsCoordinator {
             break
         case .noSyncedLyrics:
             return .noSyncedLyrics(trackTitle: track.title, artist: track.artist)
-        case .failed:
-            if shouldRetry(for: key) {
+        case .failed(let message):
+            switch retryReadiness(for: key) {
+            case .ready:
                 startLyricsLoad(for: key)
                 return .retryingInBackground(
                     trackTitle: track.title,
                     artist: track.artist,
                     message: Self.timeoutRetryMessage
                 )
+            case .waiting:
+                return .retryingInBackground(
+                    trackTitle: track.title,
+                    artist: track.artist,
+                    message: Self.timeoutRetryMessage
+                )
+            case .exhausted:
+                return .error(message: message)
             }
-            return .retryingInBackground(
-                trackTitle: track.title,
-                artist: track.artist,
-                message: Self.timeoutRetryMessage
-            )
         }
 
         guard case .lyrics(let lyrics) = lyricState,
@@ -200,6 +205,8 @@ public actor LyricsCoordinator {
         }
         if didFail {
             recordFailure(for: key)
+        } else {
+            retryState.removeValue(forKey: key.stableID)
         }
         lyricState = state
         loadingTask = nil
@@ -221,22 +228,36 @@ public actor LyricsCoordinator {
     private func recordFailure(for key: TrackLookupKey) {
         let current = retryState[key.stableID] ?? RetryState(failureCount: 0, nextRetryAt: .distantPast)
         let failureCount = current.failureCount + 1
-        let delayIndex = min(failureCount - 1, max(retrySchedule.count - 1, 0))
-        let delay = retrySchedule.isEmpty ? 300 : retrySchedule[delayIndex]
-        retryState[key.stableID] = RetryState(
-            failureCount: failureCount,
-            nextRetryAt: Date().addingTimeInterval(delay)
-        )
-        LyricsDebugLog.write(
-            "Lyrics load retry scheduled \(LyricsDebugLog.trackSummary(key)) failureCount=\(failureCount) delay=\(String(format: "%.0fs", delay))"
-        )
+        if failureCount <= retrySchedule.count {
+            let delay = retrySchedule[failureCount - 1]
+            retryState[key.stableID] = RetryState(
+                failureCount: failureCount,
+                nextRetryAt: Date().addingTimeInterval(delay)
+            )
+            LyricsDebugLog.write(
+                "Lyrics load retry scheduled \(LyricsDebugLog.trackSummary(key)) failureCount=\(failureCount) retryCount=\(failureCount) maxRetries=\(retrySchedule.count) delay=\(String(format: "%.0fs", delay))"
+            )
+        } else {
+            retryState[key.stableID] = RetryState(
+                failureCount: failureCount,
+                nextRetryAt: .distantFuture
+            )
+            LyricsDebugLog.write(
+                "Lyrics load retries exhausted \(LyricsDebugLog.trackSummary(key)) failureCount=\(failureCount) maxRetries=\(retrySchedule.count)"
+            )
+        }
     }
 
-    private func shouldRetry(for key: TrackLookupKey) -> Bool {
+    private func retryReadiness(for key: TrackLookupKey) -> RetryReadiness {
         guard let state = retryState[key.stableID] else {
-            return true
+            return .ready
         }
-        return Date() >= state.nextRetryAt
+
+        if state.failureCount > retrySchedule.count {
+            return .exhausted
+        }
+
+        return Date() >= state.nextRetryAt ? .ready : .waiting
     }
 
     private func readableMessage(for error: Error) -> String {
@@ -288,4 +309,10 @@ private enum CachedLyricState: Sendable {
 private struct RetryState: Sendable {
     let failureCount: Int
     let nextRetryAt: Date
+}
+
+private enum RetryReadiness: Sendable {
+    case ready
+    case waiting
+    case exhausted
 }

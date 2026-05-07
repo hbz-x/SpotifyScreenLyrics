@@ -181,6 +181,68 @@ func timeoutDisplaysBackgroundDownloadMessage() async {
     ))
 }
 
+@Test
+func failedLyricsLoadWaitsForRetryIntervalBeforeRetrying() async {
+    let track = SpotifyTrack(
+        title: "Song",
+        artist: "Artist",
+        album: "Album",
+        duration: 100,
+        position: 1,
+        isPlaying: true
+    )
+    let spotify = StubSpotifyReader(track: track)
+    let fetcher = CountingLyricsFetcher(result: .failure(URLError(.timedOut)))
+    let coordinator = LyricsCoordinator(
+        spotifyReader: spotify,
+        lyricsFetcher: fetcher,
+        lyricsCache: MemoryLyricsCache(),
+        retrySchedule: [0.05, 0.05, 0.05]
+    )
+
+    _ = await coordinator.refresh()
+    try? await Task.sleep(nanoseconds: 10_000_000)
+    _ = await coordinator.refresh()
+
+    #expect(await fetcher.fetchCount == 1)
+
+    try? await Task.sleep(nanoseconds: 60_000_000)
+    _ = await coordinator.refresh()
+    try? await Task.sleep(nanoseconds: 10_000_000)
+
+    #expect(await fetcher.fetchCount == 2)
+}
+
+@Test
+func failedLyricsLoadStopsAfterThreeRetries() async {
+    let track = SpotifyTrack(
+        title: "Song",
+        artist: "Artist",
+        album: "Album",
+        duration: 100,
+        position: 1,
+        isPlaying: true
+    )
+    let spotify = StubSpotifyReader(track: track)
+    let fetcher = CountingLyricsFetcher(result: .failure(URLError(.timedOut)))
+    let coordinator = LyricsCoordinator(
+        spotifyReader: spotify,
+        lyricsFetcher: fetcher,
+        lyricsCache: MemoryLyricsCache(),
+        retrySchedule: [0, 0, 0]
+    )
+
+    for _ in 0..<5 {
+        _ = await coordinator.refresh()
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+
+    let status = await coordinator.refresh()
+
+    #expect(await fetcher.fetchCount == 4)
+    #expect(status == .error(message: URLError(.timedOut).localizedDescription))
+}
+
 final class StubSpotifyReader: SpotifyReading, @unchecked Sendable {
     private let track: SpotifyTrack
 
