@@ -46,4 +46,16 @@ final class OverlayWindowController: NSWindowController {
     func setBackgroundOpacity(_ opacity: Double) {
         overlayView.setBackgroundOpacity(opacity)
     }
+
+    func setContrastStyle(_ style: LyricsOverlayView.ContrastStyle) {
+        overlayView.setContrastStyle(style)
+    }
+
+    func overlaySampleRectInScreen() -> CGRect? {
+        guard let window else {
+            return nil
+        }
+        let rectInWindow = overlayView.containerFrameInWindow()
+        return window.convertToScreen(rectInWindow)
+    }
 }

@@ -3,10 +3,15 @@ import SpotifyScreenLyricsCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let adaptiveContrastMenuTitle = "Adaptive Lyric Contrast"
+    private static let adaptiveContrastPermissionMenuTitle = "Adaptive Lyric Contrast (needs Screen Recording)"
+
     private var statusItem: NSStatusItem?
     private var overlayController: OverlayWindowController?
+    private var adaptiveContrastSampler: AdaptiveContrastSampler?
     private var refreshTimer: Timer?
     private var backgroundOpacityItems: [NSMenuItem] = []
+    private var adaptiveContrastItem: NSMenuItem?
     private let lyricsCache = LyricsCacheStore()
     private lazy var coordinator = LyricsCoordinator(
         spotifyReader: SpotifyAppleScriptClient(),
@@ -17,12 +22,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         overlayController = OverlayWindowController()
         overlayController?.showWindow(nil)
+        configureAdaptiveContrastSampler()
         configureMenu()
+        updateAdaptiveContrast(requestPermission: false)
         startPolling()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         refreshTimer?.invalidate()
+        adaptiveContrastSampler?.stop()
     }
 
     private func configureMenu() {
@@ -34,6 +42,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Hide Lyrics", action: #selector(hideLyrics), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(backgroundOpacityMenuItem())
+        let adaptiveContrastItem = NSMenuItem(
+            title: Self.adaptiveContrastMenuTitle,
+            action: #selector(toggleAdaptiveLyricContrast(_:)),
+            keyEquivalent: ""
+        )
+        adaptiveContrastItem.target = self
+        menu.addItem(adaptiveContrastItem)
+        self.adaptiveContrastItem = adaptiveContrastItem
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Reload Lyrics", action: #selector(reloadLyrics), keyEquivalent: "r"))
         menu.addItem(NSMenuItem.separator())
@@ -47,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
         self.statusItem = statusItem
         updateBackgroundOpacityMenuState()
+        updateAdaptiveContrastMenuState()
     }
 
     private func backgroundOpacityMenuItem() -> NSMenuItem {
@@ -82,6 +99,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refresh()
     }
 
+    private func configureAdaptiveContrastSampler() {
+        let sampler = AdaptiveContrastSampler(
+            backgroundOpacity: AppSettings.backgroundOpacity,
+            sampleRectProvider: { [weak self] in
+                self?.overlayController?.overlaySampleRectInScreen()
+            }
+        )
+        sampler.onStyleChanged = { [weak self] style in
+            self?.overlayController?.setContrastStyle(style)
+        }
+        sampler.onScreenCaptureAccessChanged = { [weak self] hasAccess in
+            self?.updateAdaptiveContrastMenuState(hasScreenCaptureAccess: hasAccess)
+        }
+        adaptiveContrastSampler = sampler
+    }
+
     @objc private func timerFired() {
         refresh()
     }
@@ -110,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         AppSettings.backgroundOpacity = opacity
         overlayController?.setBackgroundOpacity(opacity)
+        adaptiveContrastSampler?.backgroundOpacity = opacity
         updateBackgroundOpacityMenuState()
     }
 
@@ -118,6 +152,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for item in backgroundOpacityItems {
             let itemOpacity = item.representedObject as? Double
             item.state = itemOpacity == currentOpacity ? .on : .off
+        }
+    }
+
+    @objc private func toggleAdaptiveLyricContrast(_ sender: NSMenuItem) {
+        AppSettings.adaptiveLyricContrastEnabled.toggle()
+        updateAdaptiveContrast(requestPermission: AppSettings.adaptiveLyricContrastEnabled)
+    }
+
+    private func updateAdaptiveContrast(requestPermission: Bool) {
+        if AppSettings.adaptiveLyricContrastEnabled {
+            adaptiveContrastSampler?.start(requestPermission: requestPermission)
+        } else {
+            adaptiveContrastSampler?.stop()
+        }
+        updateAdaptiveContrastMenuState()
+    }
+
+    private func updateAdaptiveContrastMenuState(hasScreenCaptureAccess: Bool? = nil) {
+        adaptiveContrastItem?.state = AppSettings.adaptiveLyricContrastEnabled ? .on : .off
+        if AppSettings.adaptiveLyricContrastEnabled, hasScreenCaptureAccess == false {
+            adaptiveContrastItem?.title = Self.adaptiveContrastPermissionMenuTitle
+        } else {
+            adaptiveContrastItem?.title = Self.adaptiveContrastMenuTitle
         }
     }
 

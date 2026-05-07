@@ -2,11 +2,18 @@ import AppKit
 import SpotifyScreenLyricsCore
 
 final class LyricsOverlayView: NSView {
+    enum ContrastStyle: Equatable {
+        case system
+        case lightText
+        case darkText
+    }
+
     private let container = NSView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let currentLineLabel = NSTextField(labelWithString: "")
     private let nextLineLabel = NSTextField(labelWithString: "")
     private let statusDot = NSView()
+    private var contrastStyle: ContrastStyle = .system
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -64,6 +71,18 @@ final class LyricsOverlayView: NSView {
         container.layer?.backgroundColor = NSColor.black.withAlphaComponent(clampedOpacity).cgColor
         container.layer?.borderColor = NSColor.white.withAlphaComponent(clampedOpacity > 0 ? 0.12 : 0).cgColor
         container.layer?.borderWidth = clampedOpacity > 0 ? 1 : 0
+    }
+
+    func setContrastStyle(_ style: ContrastStyle) {
+        guard contrastStyle != style else {
+            return
+        }
+        contrastStyle = style
+        applyContrastStyle()
+    }
+
+    func containerFrameInWindow() -> NSRect {
+        convert(container.frame, to: nil)
     }
 
     private func setupViews() {
@@ -125,6 +144,7 @@ final class LyricsOverlayView: NSView {
         ])
 
         setDotColor(.systemGray)
+        applyContrastStyle()
     }
 
     private func configure(label: NSTextField, font: NSFont, color: NSColor) {
@@ -139,5 +159,33 @@ final class LyricsOverlayView: NSView {
 
     private func setDotColor(_ color: NSColor) {
         statusDot.layer?.backgroundColor = color.cgColor
+    }
+
+    private func applyContrastStyle() {
+        switch contrastStyle {
+        case .system:
+            titleLabel.textColor = NSColor.white.withAlphaComponent(0.72)
+            currentLineLabel.textColor = .white
+            nextLineLabel.textColor = NSColor.white.withAlphaComponent(0.55)
+            applyTextShadow(color: .black, alpha: 0.85, blurRadius: 3, offset: NSSize(width: 0, height: -1))
+        case .lightText:
+            titleLabel.textColor = NSColor.white.withAlphaComponent(0.72)
+            currentLineLabel.textColor = .white
+            nextLineLabel.textColor = NSColor.white.withAlphaComponent(0.55)
+            applyTextShadow(color: .black, alpha: 0.85, blurRadius: 3, offset: NSSize(width: 0, height: -1))
+        case .darkText:
+            titleLabel.textColor = NSColor.black.withAlphaComponent(0.66)
+            currentLineLabel.textColor = .black
+            nextLineLabel.textColor = NSColor.black.withAlphaComponent(0.48)
+            applyTextShadow(color: .white, alpha: 0.8, blurRadius: 2, offset: NSSize(width: 0, height: -1))
+        }
+    }
+
+    private func applyTextShadow(color: NSColor, alpha: CGFloat, blurRadius: CGFloat, offset: NSSize) {
+        let shadow = NSShadow()
+        shadow.shadowColor = color.withAlphaComponent(alpha)
+        shadow.shadowBlurRadius = blurRadius
+        shadow.shadowOffset = offset
+        [titleLabel, currentLineLabel, nextLineLabel].forEach { $0.shadow = shadow }
     }
 }
