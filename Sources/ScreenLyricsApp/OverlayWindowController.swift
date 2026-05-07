@@ -42,4 +42,8 @@ final class OverlayWindowController: NSWindowController {
     func render(_ status: LyricsStatus) {
         overlayView.render(status)
     }
+
+    func setBackgroundOpacity(_ opacity: Double) {
+        overlayView.setBackgroundOpacity(opacity)
+    }
 }

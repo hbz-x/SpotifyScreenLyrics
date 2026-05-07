@@ -13,7 +13,7 @@ public final class LRCLIBClient: LyricsFetching, @unchecked Sendable {
     public init(
         session: URLSession = .shared,
         baseURL: URL = URL(string: "https://lrclib.net/api/get")!,
-        timeoutInterval: TimeInterval = 6
+        timeoutInterval: TimeInterval = 20
     ) {
         self.session = session
         self.baseURL = baseURL

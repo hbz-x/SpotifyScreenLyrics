@@ -34,6 +34,7 @@ func refreshReusesSingleInFlightLyricsRequestForSameTrack() async {
     async let first = coordinator.refresh()
     async let second = coordinator.refresh()
     _ = await (first, second)
+    try? await Task.sleep(nanoseconds: 10_000_000)
 
     #expect(await fetcher.fetchCount == 1)
 }
@@ -59,8 +60,38 @@ func refreshCachesNoSyncedLyricsForSameTrack() async {
     _ = await coordinator.refresh()
     _ = await coordinator.refresh()
     _ = await coordinator.refresh()
+    try? await Task.sleep(nanoseconds: 10_000_000)
 
     #expect(await fetcher.fetchCount == 1)
+}
+
+@Test
+func timeoutDisplaysBackgroundDownloadMessage() async {
+    let track = SpotifyTrack(
+        title: "Song",
+        artist: "Artist",
+        album: "Album",
+        duration: 100,
+        position: 1,
+        isPlaying: true
+    )
+    let spotify = StubSpotifyReader(track: track)
+    let fetcher = CountingLyricsFetcher(result: .failure(URLError(.timedOut)))
+    let coordinator = LyricsCoordinator(
+        spotifyReader: spotify,
+        lyricsFetcher: fetcher,
+        lyricsCache: MemoryLyricsCache()
+    )
+
+    _ = await coordinator.refresh()
+    try? await Task.sleep(nanoseconds: 10_000_000)
+    let status = await coordinator.refresh()
+
+    #expect(status == .retryingInBackground(
+        trackTitle: "Song",
+        artist: "Artist",
+        message: "Downloading lyrics in background"
+    ))
 }
 
 final class StubSpotifyReader: SpotifyReading, @unchecked Sendable {

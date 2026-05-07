@@ -2,7 +2,7 @@ import AppKit
 import ScreenLyricsCore
 
 final class LyricsOverlayView: NSView {
-    private let container = NSVisualEffectView()
+    private let container = NSView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let currentLineLabel = NSTextField(labelWithString: "")
     private let nextLineLabel = NSTextField(labelWithString: "")
@@ -12,6 +12,7 @@ final class LyricsOverlayView: NSView {
         super.init(frame: frameRect)
         wantsLayer = true
         setupViews()
+        setBackgroundOpacity(AppSettings.backgroundOpacity)
     }
 
     @available(*, unavailable)
@@ -58,11 +59,15 @@ final class LyricsOverlayView: NSView {
         }
     }
 
+    func setBackgroundOpacity(_ opacity: Double) {
+        let clampedOpacity = min(max(opacity, 0), 1)
+        container.layer?.backgroundColor = NSColor.black.withAlphaComponent(clampedOpacity).cgColor
+        container.layer?.borderColor = NSColor.white.withAlphaComponent(clampedOpacity > 0 ? 0.12 : 0).cgColor
+        container.layer?.borderWidth = clampedOpacity > 0 ? 1 : 0
+    }
+
     private func setupViews() {
         container.translatesAutoresizingMaskIntoConstraints = false
-        container.material = .hudWindow
-        container.blendingMode = .behindWindow
-        container.state = .active
         container.wantsLayer = true
         container.layer?.cornerRadius = 8
         container.layer?.masksToBounds = true

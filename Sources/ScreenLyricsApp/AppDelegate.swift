@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var overlayController: OverlayWindowController?
     private var refreshTimer: Timer?
+    private var backgroundOpacityItems: [NSMenuItem] = []
     private let lyricsCache = LyricsCacheStore()
     private lazy var coordinator = LyricsCoordinator(
         spotifyReader: SpotifyAppleScriptClient(),
@@ -32,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Show Lyrics", action: #selector(showLyrics), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Hide Lyrics", action: #selector(hideLyrics), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(backgroundOpacityMenuItem())
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Reload Lyrics", action: #selector(reloadLyrics), keyEquivalent: "r"))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Import Lyrics Folder...", action: #selector(importLyricsFolder), keyEquivalent: "i"))
@@ -43,6 +46,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem.menu = menu
         self.statusItem = statusItem
+        updateBackgroundOpacityMenuState()
+    }
+
+    private func backgroundOpacityMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Background Opacity", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        backgroundOpacityItems = [
+            opacityMenuItem(title: "Transparent", value: 0),
+            opacityMenuItem(title: "25%", value: 0.25),
+            opacityMenuItem(title: "50%", value: 0.5),
+            opacityMenuItem(title: "75%", value: 0.75),
+            opacityMenuItem(title: "100%", value: 1)
+        ]
+        backgroundOpacityItems.forEach { submenu.addItem($0) }
+        item.submenu = submenu
+        return item
+    }
+
+    private func opacityMenuItem(title: String, value: Double) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(setBackgroundOpacity(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = value
+        return item
     }
 
     private func startPolling() {
@@ -76,6 +102,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func hideLyrics() {
         overlayController?.window?.orderOut(nil)
+    }
+
+    @objc private func setBackgroundOpacity(_ sender: NSMenuItem) {
+        guard let opacity = sender.representedObject as? Double else {
+            return
+        }
+        AppSettings.backgroundOpacity = opacity
+        overlayController?.setBackgroundOpacity(opacity)
+        updateBackgroundOpacityMenuState()
+    }
+
+    private func updateBackgroundOpacityMenuState() {
+        let currentOpacity = AppSettings.backgroundOpacity
+        for item in backgroundOpacityItems {
+            let itemOpacity = item.representedObject as? Double
+            item.state = itemOpacity == currentOpacity ? .on : .off
+        }
     }
 
     @objc private func reloadLyrics() {

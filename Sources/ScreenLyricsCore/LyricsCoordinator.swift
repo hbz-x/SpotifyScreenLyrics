@@ -1,6 +1,7 @@
 import Foundation
 
 public actor LyricsCoordinator {
+    private static let timeoutRetryMessage = "Downloading lyrics in background"
     private let spotifyReader: SpotifyReading
     private let lyricsFetcher: LyricsFetching
     private let lyricsCache: LyricsCaching
@@ -84,13 +85,13 @@ public actor LyricsCoordinator {
                 return .retryingInBackground(
                     trackTitle: track.title,
                     artist: track.artist,
-                    message: "Downloading lyrics from LRCLIB"
+                    message: Self.timeoutRetryMessage
                 )
             }
             return .retryingInBackground(
                 trackTitle: track.title,
                 artist: track.artist,
-                message: "LRCLIB timed out; will retry in background"
+                message: Self.timeoutRetryMessage
             )
         }
 
@@ -131,7 +132,7 @@ public actor LyricsCoordinator {
         }
     }
 
-    private func finishLyricsLoad(_ state: CachedLyricState, for key: TrackLookupKey, didFail: Bool = false) {
+    private func finishLyricsLoad(_ state: CachedLyricState, for key: TrackLookupKey, didFail: Bool = false) async {
         guard cachedKey == key else {
             return
         }
