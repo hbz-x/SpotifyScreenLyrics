@@ -150,6 +150,11 @@ public actor LyricsCacheStore: LyricsCaching {
                 continue
             }
 
+            guard isSafeImportedFileName(entry.fileName) else {
+                failed += 1
+                continue
+            }
+
             let sourceURL = importLyricsDirectory.appendingPathComponent(entry.fileName)
             let syncedLyrics: String
             do {
@@ -277,9 +282,20 @@ public actor LyricsCacheStore: LyricsCaching {
         let readableName = "\(key.artist) - \(key.title)"
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
+            .replacingOccurrences(of: "\\", with: "-")
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return "\(readableName)-\(shortHash(key.stableID)).lrc"
+    }
+
+    private func isSafeImportedFileName(_ fileName: String) -> Bool {
+        return !fileName.contains("/") &&
+            !fileName.contains("\\") &&
+            !fileName.isEmpty &&
+            fileName != "." &&
+            fileName != ".." &&
+            !fileName.contains("..") &&
+            fileName.lowercased().hasSuffix(".lrc")
     }
 
     private func parsePlainLRCFileName(_ name: String) -> (artist: String, title: String)? {

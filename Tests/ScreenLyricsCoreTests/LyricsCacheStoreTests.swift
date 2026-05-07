@@ -139,6 +139,48 @@ func exportFolderCanBeImportedAgain() async throws {
     #expect(loaded?.syncedLines == [LyricLine(time: 0, text: "Exported line")])
 }
 
+@Test
+func importManifestRejectsPathTraversalFileName() async throws {
+    let importFolder = temporaryDirectory()
+    let lyricsFolder = importFolder.appendingPathComponent("lyrics", isDirectory: true)
+    try FileManager.default.createDirectory(at: lyricsFolder, withIntermediateDirectories: true)
+    try "[00:00.00]Outside".write(
+        to: importFolder.appendingPathComponent("outside.lrc"),
+        atomically: true,
+        encoding: .utf8
+    )
+    let manifest = """
+    {
+      "version": 1,
+      "entries": [
+        {
+          "id": "artist|song||0",
+          "title": "Song",
+          "artist": "Artist",
+          "album": "",
+          "duration": 0,
+          "fileName": "../outside.lrc",
+          "source": "import",
+          "savedAt": 0
+        }
+      ]
+    }
+    """
+    try manifest.write(
+        to: importFolder.appendingPathComponent("manifest.json"),
+        atomically: true,
+        encoding: .utf8
+    )
+
+    let cache = LyricsCacheStore(cacheDirectory: temporaryDirectory())
+    let result = try await cache.importLyrics(from: importFolder)
+    let loaded = await cache.loadLyrics(for: TrackLookupKey(title: "Song", artist: "Artist", album: "", duration: 0))
+
+    #expect(result.imported == 0)
+    #expect(result.failed == 1)
+    #expect(loaded == nil)
+}
+
 private func temporaryDirectory() -> URL {
     FileManager.default.temporaryDirectory
         .appendingPathComponent("ScreenLyricsTests-\(UUID().uuidString)", isDirectory: true)
