@@ -1,5 +1,5 @@
 import Testing
-@testable import ScreenLyricsCore
+@testable import SpotifyScreenLyricsCore
 
 @Test
 func displayLinesBeforeFirstTimestampUsesFirstLine() {

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ScreenLyricsCore
+@testable import SpotifyScreenLyricsCore
 
 @Test
 func refreshReusesSingleInFlightLyricsRequestForSameTrack() async {
@@ -126,7 +126,7 @@ actor CountingLyricsFetcher: LyricsFetching {
 }
 
 actor MemoryLyricsCache: LyricsCaching {
-    nonisolated let cacheDirectory = URL(fileURLWithPath: "/tmp/ScreenLyricsMemoryCache", isDirectory: true)
+    nonisolated let cacheDirectory = URL(fileURLWithPath: "/tmp/SpotifyScreenLyricsMemoryCache", isDirectory: true)
     private var storage: [String: Lyrics] = [:]
 
     func loadLyrics(for key: TrackLookupKey) async -> Lyrics? {

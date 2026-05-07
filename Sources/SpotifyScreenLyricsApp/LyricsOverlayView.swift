@@ -1,5 +1,5 @@
 import AppKit
-import ScreenLyricsCore
+import SpotifyScreenLyricsCore
 
 final class LyricsOverlayView: NSView {
     private let container = NSView()
@@ -52,7 +52,7 @@ final class LyricsOverlayView: NSView {
             nextLineLabel.stringValue = ""
             setDotColor(.systemYellow)
         case .error(let message):
-            titleLabel.stringValue = "ScreenLyrics"
+            titleLabel.stringValue = "SpotifyScreenLyrics"
             currentLineLabel.stringValue = message
             nextLineLabel.stringValue = ""
             setDotColor(.systemRed)

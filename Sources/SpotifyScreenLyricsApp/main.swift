@@ -1,5 +1,5 @@
 import AppKit
-import ScreenLyricsCore
+import SpotifyScreenLyricsCore
 
 let app = NSApplication.shared
 let delegate = AppDelegate()

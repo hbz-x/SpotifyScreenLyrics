@@ -3,25 +3,25 @@
 import PackageDescription
 
 let package = Package(
-    name: "ScreenLyrics",
+    name: "SpotifyScreenLyrics",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "ScreenLyrics", targets: ["ScreenLyricsApp"]),
-        .library(name: "ScreenLyricsCore", targets: ["ScreenLyricsCore"])
+        .executable(name: "SpotifyScreenLyrics", targets: ["SpotifyScreenLyricsApp"]),
+        .library(name: "SpotifyScreenLyricsCore", targets: ["SpotifyScreenLyricsCore"])
     ],
     targets: [
         .target(
-            name: "ScreenLyricsCore"
+            name: "SpotifyScreenLyricsCore"
         ),
         .executableTarget(
-            name: "ScreenLyricsApp",
-            dependencies: ["ScreenLyricsCore"]
+            name: "SpotifyScreenLyricsApp",
+            dependencies: ["SpotifyScreenLyricsCore"]
         ),
         .testTarget(
-            name: "ScreenLyricsCoreTests",
-            dependencies: ["ScreenLyricsCore"]
+            name: "SpotifyScreenLyricsCoreTests",
+            dependencies: ["SpotifyScreenLyricsCore"]
         )
     ]
 )

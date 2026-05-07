@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ScreenLyricsCore
+@testable import SpotifyScreenLyricsCore
 
 @Test
 func decodeLRCLIBResponse() throws {

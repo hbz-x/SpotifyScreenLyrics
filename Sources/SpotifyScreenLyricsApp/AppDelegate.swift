@@ -1,5 +1,5 @@
 import AppKit
-import ScreenLyricsCore
+import SpotifyScreenLyricsCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Export Lyrics Folder...", action: #selector(exportLyricsFolder), keyEquivalent: "e"))
         menu.addItem(NSMenuItem(title: "Open Lyrics Cache Folder", action: #selector(openLyricsCacheFolder), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit ScreenLyrics", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit SpotifyScreenLyrics", action: #selector(quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
 
         statusItem.menu = menu
@@ -137,7 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Import"
-        panel.message = "Choose a ScreenLyrics export folder or a folder containing Artist - Title.lrc files."
+        panel.message = "Choose a SpotifyScreenLyrics export folder or a folder containing Artist - Title.lrc files."
 
         guard panel.runModal() == .OK, let folderURL = panel.url else {
             return
@@ -169,7 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Export"
-        panel.message = "Choose a folder where ScreenLyrics should export manifest.json and lyrics/*.lrc."
+        panel.message = "Choose a folder where SpotifyScreenLyrics should export manifest.json and lyrics/*.lrc."
 
         guard panel.runModal() == .OK, let folderURL = panel.url else {
             return

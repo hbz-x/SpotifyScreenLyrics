@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ScreenLyricsCore
+@testable import SpotifyScreenLyricsCore
 
 @Test
 func saveAndLoadLyricsFromCache() async throws {
@@ -183,5 +183,5 @@ func importManifestRejectsPathTraversalFileName() async throws {
 
 private func temporaryDirectory() -> URL {
     FileManager.default.temporaryDirectory
-        .appendingPathComponent("ScreenLyricsTests-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("SpotifyScreenLyricsTests-\(UUID().uuidString)", isDirectory: true)
 }

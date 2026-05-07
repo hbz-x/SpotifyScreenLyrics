@@ -1,5 +1,5 @@
 import AppKit
-import ScreenLyricsCore
+import SpotifyScreenLyricsCore
 
 final class OverlayWindowController: NSWindowController {
     private let overlayView = LyricsOverlayView()

@@ -36,7 +36,7 @@ public final class LRCLIBClient: LyricsFetching, @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = timeoutInterval
-        request.setValue("ScreenLyrics/0.1.0 (https://lrclib.net)", forHTTPHeaderField: "User-Agent")
+        request.setValue("SpotifyScreenLyrics/0.1.0 (https://lrclib.net)", forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {

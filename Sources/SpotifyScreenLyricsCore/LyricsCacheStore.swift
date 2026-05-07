@@ -43,7 +43,7 @@ public actor LyricsCacheStore: LyricsCaching {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support", isDirectory: true)
         return appSupport
-            .appendingPathComponent("ScreenLyrics", isDirectory: true)
+            .appendingPathComponent("SpotifyScreenLyrics", isDirectory: true)
             .appendingPathComponent("LyricsCache", isDirectory: true)
     }
 
@@ -98,7 +98,7 @@ public actor LyricsCacheStore: LyricsCaching {
         try ensureDirectories()
 
         if FileManager.default.fileExists(atPath: folderURL.appendingPathComponent("manifest.json").path) {
-            return try importScreenLyricsFolder(from: folderURL)
+            return try importSpotifyScreenLyricsFolder(from: folderURL)
         }
 
         return try importPlainLRCFolder(from: folderURL)
@@ -134,7 +134,7 @@ public actor LyricsCacheStore: LyricsCaching {
         return LyricsImportResult(imported: exportedEntries.count, skipped: 0, failed: failed)
     }
 
-    private func importScreenLyricsFolder(from folderURL: URL) throws -> LyricsImportResult {
+    private func importSpotifyScreenLyricsFolder(from folderURL: URL) throws -> LyricsImportResult {
         let importManifestURL = folderURL.appendingPathComponent("manifest.json")
         let importLyricsDirectory = folderURL.appendingPathComponent("lyrics", isDirectory: true)
         let data = try Data(contentsOf: importManifestURL)
