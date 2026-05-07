@@ -243,6 +243,62 @@ func failedLyricsLoadStopsAfterThreeRetries() async {
     #expect(status == .error(message: URLError(.timedOut).localizedDescription))
 }
 
+@Test
+func reloadIgnoresLateResultFromCancelledSameTrackLoad() async {
+    let track = SpotifyTrack(
+        title: "Song",
+        artist: "Artist",
+        album: "Album",
+        duration: 100,
+        position: 1,
+        isPlaying: true
+    )
+    let spotify = StubSpotifyReader(track: track)
+    let fetcher = SequencedDelayedLyricsFetcher(results: [
+        DelayedLyricsResult(
+            lyrics: Lyrics(
+                trackName: "Song",
+                artistName: "Artist",
+                plainLyrics: nil,
+                syncedLyrics: "[00:00.00]Old line",
+                syncedLines: [LyricLine(time: 0, text: "Old line")]
+            ),
+            delayNanoseconds: 120_000_000
+        ),
+        DelayedLyricsResult(
+            lyrics: Lyrics(
+                trackName: "Song",
+                artistName: "Artist",
+                plainLyrics: nil,
+                syncedLyrics: "[00:00.00]New line",
+                syncedLines: [LyricLine(time: 0, text: "New line")]
+            ),
+            delayNanoseconds: 10_000_000
+        )
+    ])
+    let coordinator = LyricsCoordinator(
+        spotifyReader: spotify,
+        lyricsFetcher: fetcher,
+        lyricsCache: MemoryLyricsCache()
+    )
+
+    _ = await coordinator.refresh()
+    try? await Task.sleep(nanoseconds: 10_000_000)
+    await coordinator.reload()
+    _ = await coordinator.refresh()
+    try? await Task.sleep(nanoseconds: 180_000_000)
+
+    let status = await coordinator.refresh()
+
+    #expect(status == .ready(
+        trackTitle: "Song",
+        artist: "Artist",
+        lyrics: DisplayLyrics(currentLine: "New line", nextLine: nil),
+        isPlaying: true
+    ))
+    #expect(await fetcher.fetchCount == 2)
+}
+
 final class StubSpotifyReader: SpotifyReading, @unchecked Sendable {
     private let track: SpotifyTrack
 
@@ -286,6 +342,32 @@ actor CountingLyricsFetcher: LyricsFetching {
             try? await Task.sleep(nanoseconds: delayNanoseconds)
         }
         return try result.get()
+    }
+}
+
+struct DelayedLyricsResult: Sendable {
+    let lyrics: Lyrics
+    let delayNanoseconds: UInt64
+}
+
+actor SequencedDelayedLyricsFetcher: LyricsFetching {
+    private(set) var fetchCount = 0
+    private var results: [DelayedLyricsResult]
+
+    init(results: [DelayedLyricsResult]) {
+        self.results = results
+    }
+
+    func fetchLyrics(for track: TrackLookupKey) async throws -> Lyrics {
+        fetchCount += 1
+        guard !results.isEmpty else {
+            throw LyricsLookupError.noResult
+        }
+        let result = results.removeFirst()
+        if result.delayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: result.delayNanoseconds)
+        }
+        return result.lyrics
     }
 }
 

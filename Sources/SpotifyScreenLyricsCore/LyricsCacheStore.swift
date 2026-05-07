@@ -53,6 +53,9 @@ public actor LyricsCacheStore: LyricsCaching {
             guard let entry = entry(for: key) else {
                 return nil
             }
+            guard isSafeLyricsFileName(entry.fileName) else {
+                return nil
+            }
             let fileURL = lyricsDirectory.appendingPathComponent(entry.fileName)
             let syncedLyrics = try String(contentsOf: fileURL, encoding: .utf8)
             let syncedLines = LRCParser.parse(syncedLyrics)
@@ -107,6 +110,10 @@ public actor LyricsCacheStore: LyricsCaching {
 
     public func exportLyrics(to folderURL: URL) async throws -> LyricsImportResult {
         try ensureLoaded()
+        guard canonicalFileURL(folderURL) != canonicalFileURL(cacheDirectory) else {
+            return LyricsImportResult(imported: 0, skipped: 0, failed: manifest.entries.count)
+        }
+
         try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
 
         let exportLyricsDirectory = folderURL.appendingPathComponent("lyrics", isDirectory: true)
@@ -116,9 +123,18 @@ public actor LyricsCacheStore: LyricsCaching {
         var failed = 0
 
         for entry in manifest.entries {
+            guard isSafeLyricsFileName(entry.fileName) else {
+                failed += 1
+                continue
+            }
+
             let sourceURL = lyricsDirectory.appendingPathComponent(entry.fileName)
             let destinationURL = exportLyricsDirectory.appendingPathComponent(entry.fileName)
             do {
+                guard canonicalFileURL(sourceURL) != canonicalFileURL(destinationURL) else {
+                    failed += 1
+                    continue
+                }
                 if FileManager.default.fileExists(atPath: destinationURL.path) {
                     try FileManager.default.removeItem(at: destinationURL)
                 }
@@ -146,12 +162,7 @@ public actor LyricsCacheStore: LyricsCaching {
         var failed = 0
 
         for entry in importedManifest.entries {
-            if self.entry(id: entry.id) != nil {
-                skipped += 1
-                continue
-            }
-
-            guard isSafeImportedFileName(entry.fileName) else {
+            guard isSafeLyricsFileName(entry.fileName) else {
                 failed += 1
                 continue
             }
@@ -170,9 +181,22 @@ public actor LyricsCacheStore: LyricsCaching {
                     album: entry.album,
                     duration: TimeInterval(entry.duration)
                 )
+                if self.entry(for: key) != nil {
+                    skipped += 1
+                    continue
+                }
                 let fileName = fileName(for: key)
                 try syncedLyrics.write(to: lyricsDirectory.appendingPathComponent(fileName), atomically: true, encoding: .utf8)
-                upsert(entry.copy(fileName: fileName, savedAt: Date()))
+                upsert(LyricsCacheEntry(
+                    id: key.stableID,
+                    title: key.title,
+                    artist: key.artist,
+                    album: key.album,
+                    duration: Int(key.duration.rounded()),
+                    fileName: fileName,
+                    source: entry.source,
+                    savedAt: Date()
+                ))
                 imported += 1
             } catch {
                 failed += 1
@@ -261,9 +285,13 @@ public actor LyricsCacheStore: LyricsCaching {
 
         let title = key.title.normalizedForLookup()
         let artist = key.artist.normalizedForLookup()
+        guard !title.isEmpty, !artist.isEmpty else {
+            return nil
+        }
         return manifest.entries.first {
             $0.title.normalizedForLookup() == title &&
-            $0.artist.normalizedForLookup() == artist
+            $0.artist.normalizedForLookup() == artist &&
+            durationsAreCompatible(cached: $0.duration, lookup: key.duration)
         }
     }
 
@@ -280,16 +308,29 @@ public actor LyricsCacheStore: LyricsCaching {
     }
 
     private func fileName(for key: TrackLookupKey) -> String {
-        let readableName = "\(key.artist) - \(key.title)"
+        let readableName = [key.artist, key.title]
+            .filter { !$0.isEmpty }
+            .joined(separator: " - ")
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
             .replacingOccurrences(of: "\\", with: "-")
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\.{2,}", with: ".", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return "\(readableName)-\(shortHash(key.stableID)).lrc"
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        let prefix = readableName.isEmpty ? "lyrics" : readableName
+        return "\(prefix)-\(shortHash(key.stableID)).lrc"
     }
 
-    private func isSafeImportedFileName(_ fileName: String) -> Bool {
+    private func durationsAreCompatible(cached: Int, lookup: TimeInterval) -> Bool {
+        guard cached > 0, lookup > 0 else {
+            return true
+        }
+
+        return abs(TimeInterval(cached) - lookup) <= 3
+    }
+
+    private func isSafeLyricsFileName(_ fileName: String) -> Bool {
         return !fileName.contains("/") &&
             !fileName.contains("\\") &&
             !fileName.isEmpty &&
@@ -322,6 +363,10 @@ public actor LyricsCacheStore: LyricsCaching {
         }
         return String(hash, radix: 16)
     }
+
+    private func canonicalFileURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath()
+    }
 }
 
 private struct LyricsCacheManifest: Codable, Sendable {
@@ -339,16 +384,4 @@ private struct LyricsCacheEntry: Codable, Equatable, Sendable {
     var source: String
     var savedAt: Date
 
-    func copy(fileName: String, savedAt: Date) -> LyricsCacheEntry {
-        LyricsCacheEntry(
-            id: id,
-            title: title,
-            artist: artist,
-            album: album,
-            duration: duration,
-            fileName: fileName,
-            source: source,
-            savedAt: savedAt
-        )
-    }
 }

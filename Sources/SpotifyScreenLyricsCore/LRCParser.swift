@@ -2,16 +2,26 @@ import Foundation
 
 public enum LRCParser {
     public static func parse(_ source: String) -> [LyricLine] {
-        source
+        let parsedLines = source
             .split(whereSeparator: \.isNewline)
-            .flatMap { parseLine(String($0)) }
-            .filter { !$0.text.isEmpty }
-            .sorted { lhs, rhs in
-                if lhs.time == rhs.time {
-                    return lhs.text < rhs.text
+            .enumerated()
+            .flatMap { sourceIndex, line in
+                parseLine(String(line)).enumerated().map { timestampIndex, lyricLine in
+                    ParsedLyricLine(line: lyricLine, sourceIndex: sourceIndex, timestampIndex: timestampIndex)
                 }
-                return lhs.time < rhs.time
             }
+            .filter { !$0.line.text.isEmpty }
+            .sorted { lhs, rhs in
+                if lhs.line.time != rhs.line.time {
+                    return lhs.line.time < rhs.line.time
+                }
+                if lhs.sourceIndex != rhs.sourceIndex {
+                    return lhs.sourceIndex < rhs.sourceIndex
+                }
+                return lhs.timestampIndex < rhs.timestampIndex
+            }
+
+        return parsedLines.map(\.line)
     }
 
     private static func parseLine(_ line: String) -> [LyricLine] {
@@ -58,4 +68,10 @@ public enum LRCParser {
 
         return minutes * 60 + seconds
     }
+}
+
+private struct ParsedLyricLine {
+    let line: LyricLine
+    let sourceIndex: Int
+    let timestampIndex: Int
 }

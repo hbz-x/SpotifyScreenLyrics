@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlayController: OverlayWindowController?
     private var adaptiveContrastSampler: AdaptiveContrastSampler?
     private var refreshTimer: Timer?
+    private var refreshTask: Task<Void, Never>?
+    private var refreshGeneration = 0
     private var backgroundOpacityItems: [NSMenuItem] = []
     private var adaptiveContrastItem: NSMenuItem?
     private let lyricsCache = LyricsCacheStore()
@@ -33,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         refreshTimer?.invalidate()
+        refreshTask?.cancel()
         adaptiveContrastSampler?.stop()
     }
 
@@ -122,11 +125,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refresh()
     }
 
-    private func refresh() {
+    private func refresh(force: Bool = false) {
+        if force {
+            refreshTask?.cancel()
+            refreshTask = nil
+        } else {
+            guard refreshTask == nil else {
+                return
+            }
+        }
+
         let coordinator = coordinator
-        Task {
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        refreshTask = Task { [weak self] in
             let status = await coordinator.refresh()
+            let wasCancelled = Task.isCancelled
             await MainActor.run {
+                guard let self, self.refreshGeneration == generation else {
+                    return
+                }
+                self.refreshTask = nil
+                guard !wasCancelled else {
+                    return
+                }
                 self.overlayController?.render(status)
             }
         }
@@ -186,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await coordinator.reload()
             await MainActor.run {
-                self.refresh()
+                self.refresh(force: true)
             }
         }
     }

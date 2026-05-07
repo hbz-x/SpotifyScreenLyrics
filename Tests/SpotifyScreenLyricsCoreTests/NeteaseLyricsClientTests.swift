@@ -176,6 +176,70 @@ func neteaseLyricsClientRetriesChineseSearchWithSimplifiedQuery() async throws {
     #expect(lyrics.syncedLines == [LyricLine(time: 1, text: "傲氣面對萬重浪")])
 }
 
+@Test
+func neteaseLyricsClientKeepsFirstBestMatchWhenScoresTie() async throws {
+    let host = "netease-tied-match.example.test"
+    let session = URLSession(configuration: makeURLSessionConfiguration(
+        host: host,
+        responses: [
+            StubHTTPResponse(
+                path: "/search",
+                statusCode: 200,
+                body: """
+                {
+                  "code": 200,
+                  "result": {
+                    "songs": [
+                      {
+                        "id": 111,
+                        "name": "Song",
+                        "duration": 100000,
+                        "artists": [{ "name": "Artist" }],
+                        "album": { "name": "Album" }
+                      },
+                      {
+                        "id": 222,
+                        "name": "Song",
+                        "duration": 100000,
+                        "artists": [{ "name": "Artist" }],
+                        "album": { "name": "Album" }
+                      }
+                    ]
+                  }
+                }
+                """
+            ),
+            StubHTTPResponse(
+                path: "/lyric",
+                statusCode: 200,
+                body: """
+                {
+                  "code": 200,
+                  "lrc": { "lyric": "[00:01.00]First candidate" }
+                }
+                """
+            )
+        ]
+    ))
+    let client = NeteaseLyricsClient(
+        session: session,
+        searchURL: URL(string: "https://\(host)/search")!,
+        lyricsURL: URL(string: "https://\(host)/lyric")!
+    )
+
+    let lyrics = try await client.fetchLyrics(
+        for: TrackLookupKey(title: "Song", artist: "Artist", album: "Album", duration: 100)
+    )
+    let lyricURL = StubURLProtocol.requestURLs(for: host, path: "/lyric").first
+    let songID = lyricURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?
+        .queryItems?
+        .first { $0.name == "id" }?
+        .value
+
+    #expect(songID == "111")
+    #expect(lyrics.syncedLines == [LyricLine(time: 1, text: "First candidate")])
+}
+
 private struct StubHTTPResponse {
     let path: String
     let statusCode: Int
@@ -199,11 +263,13 @@ private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var responsesByHost: [String: [StubHTTPResponse]] = [:]
     nonisolated(unsafe) private static var requestBodiesByHostAndPath: [String: [String: [String]]] = [:]
+    nonisolated(unsafe) private static var requestURLsByHostAndPath: [String: [String: [URL]]] = [:]
 
     static func setResponses(_ responses: [StubHTTPResponse], for host: String) {
         lock.lock()
         responsesByHost[host] = responses
         requestBodiesByHostAndPath[host] = [:]
+        requestURLsByHostAndPath[host] = [:]
         lock.unlock()
     }
 
@@ -211,6 +277,12 @@ private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return requestBodiesByHostAndPath[host]?[path] ?? []
+    }
+
+    static func requestURLs(for host: String, path: String) -> [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return requestURLsByHostAndPath[host]?[path] ?? []
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
@@ -275,6 +347,7 @@ private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
 
         lock.lock()
         requestBodiesByHostAndPath[host, default: [:]][url.path, default: []].append(body)
+        requestURLsByHostAndPath[host, default: [:]][url.path, default: []].append(url)
         lock.unlock()
     }
 

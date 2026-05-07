@@ -69,7 +69,7 @@ final class AdaptiveContrastSampler {
         }
         guard CGPreflightScreenCaptureAccess(), let sampleRect = sampleRectProvider(), !sampleRect.isEmpty else {
             onScreenCaptureAccessChanged?(false)
-            apply(style: .darkText)
+            apply(style: .system)
             return
         }
         onScreenCaptureAccessChanged?(true)
@@ -125,7 +125,7 @@ final class AdaptiveContrastSampler {
 
                 await applyOnMain(style: luminance >= 0.56 ? .darkText : .lightText, generation: generation)
             } catch {
-                await applyOnMain(style: .darkText, generation: generation)
+                await applyOnMain(style: .system, generation: generation)
             }
         }
     }

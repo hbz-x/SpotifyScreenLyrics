@@ -67,27 +67,31 @@ public final class NeteaseLyricsClient: LyricsFetching, @unchecked Sendable {
         for track: TrackLookupKey,
         requestStartedAt: ContinuousClock.Instant
     ) async throws -> [NeteaseSong] {
-        var songsByID: [Int: NeteaseSong] = [:]
+        var songs: [NeteaseSong] = []
+        var seenIDs: Set<Int> = []
         var lastError: Error?
 
         for query in searchQueries(for: track) {
             do {
-                let songs = try await searchSongs(
+                let results = try await searchSongs(
                     query: query,
                     track: track,
                     requestStartedAt: requestStartedAt
                 )
-                songs.forEach { songsByID[$0.id] = $0 }
+                for song in results where !seenIDs.contains(song.id) {
+                    seenIDs.insert(song.id)
+                    songs.append(song)
+                }
             } catch {
                 lastError = error
             }
         }
 
-        if songsByID.isEmpty, let lastError {
+        if songs.isEmpty, let lastError {
             throw lastError
         }
 
-        return Array(songsByID.values)
+        return songs
     }
 
     private func searchSongs(

@@ -13,7 +13,7 @@ enum LyricsDebugLog {
             .appendingPathComponent("lyrics-debug.log")
     }()
     private static let isEnabled: Bool = {
-        ProcessInfo.processInfo.environment["SPOTIFY_SCREEN_LYRICS_DEBUG"] != "0"
+        ProcessInfo.processInfo.environment["SPOTIFY_SCREEN_LYRICS_DEBUG"] == "1"
     }()
 
     static func write(_ message: @autoclosure () -> String) {

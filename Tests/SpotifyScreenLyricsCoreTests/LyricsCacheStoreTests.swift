@@ -140,6 +140,96 @@ func exportFolderCanBeImportedAgain() async throws {
 }
 
 @Test
+func exportToOwnCacheDirectoryDoesNotDeleteCachedLyrics() async throws {
+    let folder = temporaryDirectory()
+    let cache = LyricsCacheStore(cacheDirectory: folder)
+    let key = TrackLookupKey(title: "Song", artist: "Artist", album: "Album", duration: 100)
+    try await cache.saveLyrics(
+        Lyrics(
+            trackName: "Song",
+            artistName: "Artist",
+            plainLyrics: nil,
+            syncedLyrics: "[00:00.00]Cached line",
+            syncedLines: [LyricLine(time: 0, text: "Cached line")]
+        ),
+        for: key
+    )
+
+    let result = try await cache.exportLyrics(to: folder)
+    let loaded = await cache.loadLyrics(for: key)
+
+    #expect(result.imported == 0)
+    #expect(result.failed == 1)
+    #expect(loaded?.syncedLyrics == "[00:00.00]Cached line")
+}
+
+@Test
+func loadLyricsDoesNotFallbackToSameTitleArtistWhenDurationClearlyDiffers() async throws {
+    let cache = LyricsCacheStore(cacheDirectory: temporaryDirectory())
+    try await cache.saveLyrics(
+        Lyrics(
+            trackName: "Song",
+            artistName: "Artist",
+            plainLyrics: nil,
+            syncedLyrics: "[00:00.00]Short song",
+            syncedLines: [LyricLine(time: 0, text: "Short song")]
+        ),
+        for: TrackLookupKey(title: "Song", artist: "Artist", album: "Single", duration: 100)
+    )
+
+    let loaded = await cache.loadLyrics(
+        for: TrackLookupKey(title: "Song", artist: "Artist", album: "Live Album", duration: 450)
+    )
+
+    #expect(loaded == nil)
+}
+
+@Test
+func saveLyricsWithEmptyMetadataUsesVisibleFileName() async throws {
+    let folder = temporaryDirectory()
+    let cache = LyricsCacheStore(cacheDirectory: folder)
+    let key = TrackLookupKey(title: "", artist: "", album: "", duration: 0)
+
+    try await cache.saveLyrics(
+        Lyrics(
+            trackName: "",
+            artistName: "",
+            plainLyrics: nil,
+            syncedLyrics: "[00:00.00]Line",
+            syncedLines: [LyricLine(time: 0, text: "Line")]
+        ),
+        for: key
+    )
+
+    let lyricsFolder = folder.appendingPathComponent("lyrics", isDirectory: true)
+    let fileNames = try FileManager.default.contentsOfDirectory(atPath: lyricsFolder.path)
+
+    #expect(fileNames.count == 1)
+    #expect(fileNames.first?.hasPrefix("lyrics-") == true)
+}
+
+@Test
+func saveLyricsWithDotsInMetadataCanBeLoaded() async throws {
+    let cache = LyricsCacheStore(cacheDirectory: temporaryDirectory())
+    let key = TrackLookupKey(title: "..Song..", artist: "Artist..Name", album: "", duration: 100)
+
+    try await cache.saveLyrics(
+        Lyrics(
+            trackName: "..Song..",
+            artistName: "Artist..Name",
+            plainLyrics: nil,
+            syncedLyrics: "[00:00.00]Line",
+            syncedLines: [LyricLine(time: 0, text: "Line")]
+        ),
+        for: key
+    )
+
+    let loaded = await cache.loadLyrics(for: key)
+
+    #expect(loaded?.syncedLyrics == "[00:00.00]Line")
+}
+
+@Test
 func importManifestRejectsPathTraversalFileName() async throws {
     let importFolder = temporaryDirectory()
     let lyricsFolder = importFolder.appendingPathComponent("lyrics", isDirectory: true)
@@ -179,6 +269,49 @@ func importManifestRejectsPathTraversalFileName() async throws {
     #expect(result.imported == 0)
     #expect(result.failed == 1)
     #expect(loaded == nil)
+}
+
+@Test
+func importManifestRecomputesEntryIDFromMetadata() async throws {
+    let importFolder = temporaryDirectory()
+    let lyricsFolder = importFolder.appendingPathComponent("lyrics", isDirectory: true)
+    try FileManager.default.createDirectory(at: lyricsFolder, withIntermediateDirectories: true)
+    try "[00:00.00]Imported".write(
+        to: lyricsFolder.appendingPathComponent("song.lrc"),
+        atomically: true,
+        encoding: .utf8
+    )
+    let manifest = """
+    {
+      "version": 1,
+      "entries": [
+        {
+          "id": "wrong-id",
+          "title": "Song",
+          "artist": "Artist",
+          "album": "Album",
+          "duration": 100,
+          "fileName": "song.lrc",
+          "source": "import",
+          "savedAt": 0
+        }
+      ]
+    }
+    """
+    try manifest.write(
+        to: importFolder.appendingPathComponent("manifest.json"),
+        atomically: true,
+        encoding: .utf8
+    )
+
+    let cache = LyricsCacheStore(cacheDirectory: temporaryDirectory())
+    let result = try await cache.importLyrics(from: importFolder)
+    let loaded = await cache.loadLyrics(
+        for: TrackLookupKey(title: "Song", artist: "Artist", album: "Album", duration: 100)
+    )
+
+    #expect(result.imported == 1)
+    #expect(loaded?.syncedLyrics == "[00:00.00]Imported")
 }
 
 private func temporaryDirectory() -> URL {

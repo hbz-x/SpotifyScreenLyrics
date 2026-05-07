@@ -33,6 +33,18 @@ func parseSortsLinesByTimestamp() {
 }
 
 @Test
+func parsePreservesSourceOrderForEqualTimestamps() {
+    let source = """
+    [00:01.00]Beta
+    [00:01.00]Alpha
+    """
+
+    let lines = LRCParser.parse(source)
+
+    #expect(lines.map(\.text) == ["Beta", "Alpha"])
+}
+
+@Test
 func parseSkipsMetadataAndEmptyText() {
     let source = """
     [ar:Artist]

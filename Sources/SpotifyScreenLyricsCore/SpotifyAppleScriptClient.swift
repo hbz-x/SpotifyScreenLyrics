@@ -33,7 +33,7 @@ public final class SpotifyAppleScriptClient: SpotifyReading, @unchecked Sendable
             set durationSeconds to (duration of current track) / 1000
             set positionSeconds to player position
             set isPlaying to player state is playing
-            return trackName & linefeed & artistName & linefeed & albumName & linefeed & durationSeconds & linefeed & positionSeconds & linefeed & isPlaying
+            return {trackName, artistName, albumName, durationSeconds, positionSeconds, isPlaying}
         end tell
         """
 
@@ -48,33 +48,53 @@ public final class SpotifyAppleScriptClient: SpotifyReading, @unchecked Sendable
             throw SpotifyError.scriptFailed(message)
         }
 
-        guard let output = result.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !output.isEmpty else {
-            throw SpotifyError.noTrack
-        }
-
-        if output == "NOT_RUNNING" {
+        if result.stringValue == "NOT_RUNNING" {
             throw SpotifyError.notRunning
         }
 
-        if output == "NO_TRACK" {
+        if result.stringValue == "NO_TRACK" {
             throw SpotifyError.noTrack
         }
 
-        let parts = output.components(separatedBy: "\n")
-        guard parts.count >= 6,
-              let duration = TimeInterval(parts[3]),
-              let position = TimeInterval(parts[4]) else {
+        guard let output = SpotifyAppleScriptOutput(result) else {
             throw SpotifyError.scriptFailed("Unexpected Spotify response.")
         }
 
         return SpotifyTrack(
-            title: parts[0],
-            artist: parts[1],
-            album: parts[2],
-            duration: duration,
-            position: position,
-            isPlaying: parts[5] == "true"
+            title: output.title,
+            artist: output.artist,
+            album: output.album,
+            duration: output.duration,
+            position: output.position,
+            isPlaying: output.isPlaying
         )
+    }
+}
+
+private struct SpotifyAppleScriptOutput {
+    let title: String
+    let artist: String
+    let album: String
+    let duration: TimeInterval
+    let position: TimeInterval
+    let isPlaying: Bool
+
+    init?(_ descriptor: NSAppleEventDescriptor) {
+        guard descriptor.numberOfItems >= 6,
+              let title = descriptor.atIndex(1)?.stringValue,
+              let artist = descriptor.atIndex(2)?.stringValue,
+              let album = descriptor.atIndex(3)?.stringValue,
+              let duration = descriptor.atIndex(4)?.doubleValue,
+              let position = descriptor.atIndex(5)?.doubleValue,
+              let isPlaying = descriptor.atIndex(6)?.booleanValue else {
+            return nil
+        }
+
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.duration = duration
+        self.position = position
+        self.isPlaying = isPlaying
     }
 }

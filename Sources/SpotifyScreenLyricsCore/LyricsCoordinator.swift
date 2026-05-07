@@ -11,6 +11,7 @@ public actor LyricsCoordinator {
     private var lyricState: CachedLyricState = .empty
     private var loadingTask: Task<Void, Never>?
     private var loadingStartedAt: ContinuousClock.Instant?
+    private var loadGeneration = 0
     private var retryState: [String: RetryState] = [:]
 
     public init(
@@ -33,6 +34,7 @@ public actor LyricsCoordinator {
         loadingTask?.cancel()
         loadingTask = nil
         loadingStartedAt = nil
+        loadGeneration += 1
         retryState.removeAll()
     }
 
@@ -70,6 +72,7 @@ public actor LyricsCoordinator {
             loadingTask?.cancel()
             loadingTask = nil
             loadingStartedAt = nil
+            loadGeneration += 1
         }
 
         switch lyricState {
@@ -129,6 +132,8 @@ public actor LyricsCoordinator {
     }
 
     private func startLyricsLoad(for key: TrackLookupKey) {
+        loadGeneration += 1
+        let generation = loadGeneration
         lyricState = .loading
         loadingStartedAt = ContinuousClock.now
         let trackSummary = LyricsDebugLog.trackSummary(key)
@@ -137,12 +142,18 @@ public actor LyricsCoordinator {
             let loadStartedAt = ContinuousClock.now
             let cacheStartedAt = ContinuousClock.now
             if let cachedLyrics = await lyricsCache.loadLyrics(for: key) {
+                guard !Task.isCancelled else {
+                    LyricsDebugLog.write("Lyrics load cancelled after cache read \(trackSummary)")
+                    _ = await finishLyricsLoad(.empty, for: key, generation: generation, loadStartedAt: loadStartedAt)
+                    return
+                }
+
                 let cacheElapsed = ContinuousClock.now.elapsedMilliseconds(since: cacheStartedAt)
                 let totalElapsed = ContinuousClock.now.elapsedMilliseconds(since: loadStartedAt)
                 LyricsDebugLog.write(
                     "Lyrics cache hit \(trackSummary) syncedLines=\(cachedLyrics.syncedLines.count) cacheElapsed=\(cacheElapsed) totalElapsed=\(totalElapsed)"
                 )
-                await finishLyricsLoad(.lyrics(cachedLyrics), for: key, loadStartedAt: loadStartedAt)
+                _ = await finishLyricsLoad(.lyrics(cachedLyrics), for: key, generation: generation, loadStartedAt: loadStartedAt)
                 return
             }
 
@@ -152,10 +163,21 @@ public actor LyricsCoordinator {
             do {
                 let fetchStartedAt = ContinuousClock.now
                 let lyrics = try await lyricsFetcher.fetchLyrics(for: key)
+                guard !Task.isCancelled else {
+                    LyricsDebugLog.write("Lyrics load cancelled after fetch \(trackSummary)")
+                    _ = await finishLyricsLoad(.empty, for: key, generation: generation, loadStartedAt: loadStartedAt)
+                    return
+                }
+
                 let fetchElapsed = ContinuousClock.now.elapsedMilliseconds(since: fetchStartedAt)
                 LyricsDebugLog.write(
                     "Lyrics fetch returned \(trackSummary) syncedLines=\(lyrics.syncedLines.count) fetchElapsed=\(fetchElapsed)"
                 )
+
+                let accepted = await finishLyricsLoad(.lyrics(lyrics), for: key, generation: generation, loadStartedAt: loadStartedAt)
+                guard accepted else {
+                    return
+                }
 
                 let saveStartedAt = ContinuousClock.now
                 do {
@@ -168,24 +190,23 @@ public actor LyricsCoordinator {
                         "Lyrics cache save failed \(trackSummary) saveElapsed=\(saveElapsed): \(error.localizedDescription)"
                     )
                 }
-
-                await finishLyricsLoad(.lyrics(lyrics), for: key, loadStartedAt: loadStartedAt)
             } catch LyricsLookupError.noSyncedLyrics {
                 LyricsDebugLog.write("Lyrics load found no synced lyrics \(trackSummary)")
-                await finishLyricsLoad(.noSyncedLyrics, for: key, loadStartedAt: loadStartedAt)
+                _ = await finishLyricsLoad(.noSyncedLyrics, for: key, generation: generation, loadStartedAt: loadStartedAt)
             } catch LyricsLookupError.noResult {
                 LyricsDebugLog.write("Lyrics load found no lyrics source result \(trackSummary)")
-                await finishLyricsLoad(.noSyncedLyrics, for: key, loadStartedAt: loadStartedAt)
+                _ = await finishLyricsLoad(.noSyncedLyrics, for: key, generation: generation, loadStartedAt: loadStartedAt)
             } catch is CancellationError {
                 LyricsDebugLog.write("Lyrics load cancelled \(trackSummary)")
-                await finishLyricsLoad(.empty, for: key, loadStartedAt: loadStartedAt)
+                _ = await finishLyricsLoad(.empty, for: key, generation: generation, loadStartedAt: loadStartedAt)
             } catch {
                 LyricsDebugLog.write(
                     "Lyrics load failed \(trackSummary): \(error.localizedDescription)"
                 )
-                await finishLyricsLoad(
+                _ = await finishLyricsLoad(
                     .failed(readableMessage(for: error)),
                     for: key,
+                    generation: generation,
                     didFail: true,
                     loadStartedAt: loadStartedAt
                 )
@@ -196,12 +217,13 @@ public actor LyricsCoordinator {
     private func finishLyricsLoad(
         _ state: CachedLyricState,
         for key: TrackLookupKey,
+        generation: Int,
         didFail: Bool = false,
         loadStartedAt: ContinuousClock.Instant? = nil
-    ) async {
-        guard cachedKey == key else {
+    ) async -> Bool {
+        guard cachedKey == key, loadGeneration == generation else {
             LyricsDebugLog.write("Ignoring stale lyrics load result \(LyricsDebugLog.trackSummary(key))")
-            return
+            return false
         }
         if didFail {
             recordFailure(for: key)
@@ -215,6 +237,7 @@ public actor LyricsCoordinator {
         LyricsDebugLog.write(
             "Lyrics load finished state=\(state.debugName) \(LyricsDebugLog.trackSummary(key)) elapsed=\(elapsed)"
         )
+        return true
     }
 
     private func hasExceededForegroundLoadingLimit() -> Bool {
