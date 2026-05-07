@@ -6,21 +6,25 @@ public actor LyricsCoordinator {
     private let lyricsFetcher: LyricsFetching
     private let lyricsCache: LyricsCaching
     private let retrySchedule: [TimeInterval]
+    private let foregroundLoadingLimit: Duration
     private var cachedKey: TrackLookupKey?
     private var lyricState: CachedLyricState = .empty
     private var loadingTask: Task<Void, Never>?
+    private var loadingStartedAt: ContinuousClock.Instant?
     private var retryState: [String: RetryState] = [:]
 
     public init(
         spotifyReader: SpotifyReading,
         lyricsFetcher: LyricsFetching,
         lyricsCache: LyricsCaching = LyricsCacheStore(),
-        retrySchedule: [TimeInterval] = [30, 120, 300]
+        retrySchedule: [TimeInterval] = [30, 120, 300],
+        foregroundLoadingLimit: Duration = .seconds(3)
     ) {
         self.spotifyReader = spotifyReader
         self.lyricsFetcher = lyricsFetcher
         self.lyricsCache = lyricsCache
         self.retrySchedule = retrySchedule
+        self.foregroundLoadingLimit = foregroundLoadingLimit
     }
 
     public func reload() {
@@ -28,6 +32,7 @@ public actor LyricsCoordinator {
         lyricState = .empty
         loadingTask?.cancel()
         loadingTask = nil
+        loadingStartedAt = nil
     }
 
     public var cacheDirectory: URL {
@@ -63,6 +68,7 @@ public actor LyricsCoordinator {
             lyricState = .empty
             loadingTask?.cancel()
             loadingTask = nil
+            loadingStartedAt = nil
         }
 
         switch lyricState {
@@ -71,9 +77,17 @@ public actor LyricsCoordinator {
             return .loading(trackTitle: track.title, artist: track.artist)
         case .loading:
             if let loadingTask, loadingTask.isCancelled == false {
+                if hasExceededForegroundLoadingLimit() {
+                    return .retryingInBackground(
+                        trackTitle: track.title,
+                        artist: track.artist,
+                        message: Self.timeoutRetryMessage
+                    )
+                }
                 return .loading(trackTitle: track.title, artist: track.artist)
             } else {
                 lyricState = .empty
+                loadingStartedAt = nil
                 return .loading(trackTitle: track.title, artist: track.artist)
             }
         case .lyrics:
@@ -111,6 +125,7 @@ public actor LyricsCoordinator {
 
     private func startLyricsLoad(for key: TrackLookupKey) {
         lyricState = .loading
+        loadingStartedAt = ContinuousClock.now
         let trackSummary = LyricsDebugLog.trackSummary(key)
         LyricsDebugLog.write("Lyrics load started \(trackSummary)")
         loadingTask = Task { [lyricsCache, lyricsFetcher] in
@@ -188,10 +203,19 @@ public actor LyricsCoordinator {
         }
         lyricState = state
         loadingTask = nil
+        loadingStartedAt = nil
         let elapsed = loadStartedAt.map { ContinuousClock.now.elapsedMilliseconds(since: $0) } ?? "unknown"
         LyricsDebugLog.write(
             "Lyrics load finished state=\(state.debugName) \(LyricsDebugLog.trackSummary(key)) elapsed=\(elapsed)"
         )
+    }
+
+    private func hasExceededForegroundLoadingLimit() -> Bool {
+        guard let loadingStartedAt else {
+            return false
+        }
+
+        return loadingStartedAt.duration(to: ContinuousClock.now) >= foregroundLoadingLimit
     }
 
     private func recordFailure(for key: TrackLookupKey) {

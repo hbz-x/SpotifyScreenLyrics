@@ -40,6 +40,93 @@ func refreshReusesSingleInFlightLyricsRequestForSameTrack() async {
 }
 
 @Test
+func refreshDoesNotRestartRequestWhenOnlyDurationPrecisionChanges() async {
+    let spotify = SequencedSpotifyReader(tracks: [
+        SpotifyTrack(
+            title: "Song",
+            artist: "Artist",
+            album: "Album",
+            duration: 100.2,
+            position: 1,
+            isPlaying: true
+        ),
+        SpotifyTrack(
+            title: "Song",
+            artist: "Artist",
+            album: "Album",
+            duration: 100.3,
+            position: 2,
+            isPlaying: true
+        )
+    ])
+    let fetcher = CountingLyricsFetcher(
+        result: .success(
+            Lyrics(
+                trackName: "Song",
+                artistName: "Artist",
+                plainLyrics: nil,
+                syncedLyrics: "[00:00.00]Line",
+                syncedLines: [LyricLine(time: 0, text: "Line")]
+            )
+        ),
+        delayNanoseconds: 100_000_000
+    )
+    let coordinator = LyricsCoordinator(
+        spotifyReader: spotify,
+        lyricsFetcher: fetcher,
+        lyricsCache: MemoryLyricsCache()
+    )
+
+    _ = await coordinator.refresh()
+    _ = await coordinator.refresh()
+    try? await Task.sleep(nanoseconds: 10_000_000)
+
+    #expect(await fetcher.fetchCount == 1)
+}
+
+@Test
+func refreshSwitchesSlowForegroundLoadToBackgroundMessage() async {
+    let track = SpotifyTrack(
+        title: "Song",
+        artist: "Artist",
+        album: "Album",
+        duration: 100,
+        position: 1,
+        isPlaying: true
+    )
+    let spotify = StubSpotifyReader(track: track)
+    let fetcher = CountingLyricsFetcher(
+        result: .success(
+            Lyrics(
+                trackName: "Song",
+                artistName: "Artist",
+                plainLyrics: nil,
+                syncedLyrics: "[00:00.00]Line",
+                syncedLines: [LyricLine(time: 0, text: "Line")]
+            )
+        ),
+        delayNanoseconds: 100_000_000
+    )
+    let coordinator = LyricsCoordinator(
+        spotifyReader: spotify,
+        lyricsFetcher: fetcher,
+        lyricsCache: MemoryLyricsCache(),
+        foregroundLoadingLimit: .milliseconds(1)
+    )
+
+    _ = await coordinator.refresh()
+    try? await Task.sleep(nanoseconds: 10_000_000)
+    let status = await coordinator.refresh()
+
+    #expect(status == .retryingInBackground(
+        trackTitle: "Song",
+        artist: "Artist",
+        message: "Downloading lyrics in background"
+    ))
+    #expect(await fetcher.fetchCount == 1)
+}
+
+@Test
 func refreshCachesNoSyncedLyricsForSameTrack() async {
     let track = SpotifyTrack(
         title: "Song",
@@ -103,6 +190,21 @@ final class StubSpotifyReader: SpotifyReading, @unchecked Sendable {
 
     func currentTrack() async throws -> SpotifyTrack {
         track
+    }
+}
+
+actor SequencedSpotifyReader: SpotifyReading {
+    private let tracks: [SpotifyTrack]
+    private var index = 0
+
+    init(tracks: [SpotifyTrack]) {
+        self.tracks = tracks
+    }
+
+    func currentTrack() async throws -> SpotifyTrack {
+        let track = tracks[min(index, tracks.count - 1)]
+        index += 1
+        return track
     }
 }
 

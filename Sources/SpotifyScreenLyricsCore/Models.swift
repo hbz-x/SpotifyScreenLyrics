@@ -29,7 +29,7 @@ public struct SpotifyTrack: Equatable, Sendable {
     }
 }
 
-public struct TrackLookupKey: Equatable, Hashable, Sendable {
+public struct TrackLookupKey: Hashable, Sendable {
     public let title: String
     public let artist: String
     public let album: String
@@ -46,6 +46,14 @@ public struct TrackLookupKey: Equatable, Hashable, Sendable {
         let durationSeconds = Int(duration.rounded())
         let rawID = "\(artist)|\(title)|\(album)|\(durationSeconds)"
         return rawID.normalizedForLookup()
+    }
+
+    public static func == (lhs: TrackLookupKey, rhs: TrackLookupKey) -> Bool {
+        lhs.stableID == rhs.stableID
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(stableID)
     }
 }
 
